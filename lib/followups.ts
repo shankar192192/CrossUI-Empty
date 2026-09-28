@@ -16,13 +16,20 @@ export const DEMO_TIMEZONE = OPERATOR_TIMEZONE;
  *
  * Because the conversion is computed per specific calendar date (not a
  * fixed offset), DST transitions are handled correctly.
+ *
+ * IMPORTANT: fromZonedTime must be given a plain "YYYY-MM-DDTHH:mm:ss"
+ * string (no trailing Z/offset), which it parses field-by-field literally.
+ * Passing a `Date` object instead is NOT equivalent — date-fns-tz reads a
+ * Date's wall-clock fields via the JS runtime's *local* (system-timezone)
+ * getters, so on a machine whose system timezone isn't UTC, a Date built
+ * via `Date.UTC(...)` gets silently reinterpreted through that system
+ * offset before the target-timezone conversion is even applied, producing
+ * a result skewed by the system's own offset (e.g. every computed instant
+ * off by exactly +5:30 on a machine set to IST). Always route through the
+ * literal string form.
  */
 export function computeScheduledAt(localDate: string, localTime: string, timezone: string): Date {
-  const [hours, minutes] = localTime.split(":").map(Number);
-  const [year, month, day] = localDate.split("-").map(Number);
-
-  const naive = new Date(Date.UTC(year, month - 1, day, hours, minutes, 0));
-  return fromZonedTime(naive, timezone);
+  return fromZonedTime(`${localDate}T${localTime}:00`, timezone);
 }
 
 /** Returns today's date (YYYY-MM-DD) as observed in the given timezone. */
@@ -30,10 +37,15 @@ export function todayInTimezone(timezone: string, now: Date = new Date()): strin
   return formatTz(toZonedTime(now, timezone), "yyyy-MM-dd", { timeZone: timezone });
 }
 
+// Pure UTC-epoch arithmetic on a date-only string — deliberately avoids
+// routing through date-fns-tz's `format` here, since `format` given a raw
+// Date (not one produced by `toZonedTime`) reads via the JS runtime's local
+// getters and would reintroduce the same system-timezone sensitivity as
+// the computeScheduledAt bug above. `.toISOString()` is always UTC by
+// spec, so this stays correct regardless of the machine's system timezone.
 function addDaysToDateString(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split("-").map(Number);
-  const naive = new Date(Date.UTC(y, m - 1, d + days));
-  return formatTz(naive, "yyyy-MM-dd", { timeZone: "UTC" });
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
 /**
