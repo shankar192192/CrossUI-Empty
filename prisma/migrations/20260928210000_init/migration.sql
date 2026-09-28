@@ -5,16 +5,13 @@ CREATE TYPE "Role" AS ENUM ('ADMIN', 'SALESPERSON');
 CREATE TYPE "ClientStatus" AS ENUM ('NEW_LEAD', 'DEMO_SCHEDULED', 'FOLLOW_UP', 'CONVERTED', 'LOST');
 
 -- CreateEnum
-CREATE TYPE "LeadSource" AS ENUM ('WEBSITE', 'REFERRAL', 'INSTAGRAM', 'FACEBOOK', 'GOOGLE_ADS', 'WHATSAPP_INBOUND', 'WALK_IN', 'PARTNER_SCHOOL', 'OTHER');
-
--- CreateEnum
-CREATE TYPE "FollowUpStatus" AS ENUM ('PENDING', 'COMPLETED', 'RESCHEDULED', 'CANCELLED');
-
--- CreateEnum
 CREATE TYPE "PaymentStatus" AS ENUM ('PENDING', 'PARTIALLY_PAID', 'PAID', 'OVERDUE');
 
 -- CreateEnum
-CREATE TYPE "ActivityType" AS ENUM ('LEAD_CREATED', 'NOTE', 'REQUIREMENT_UPDATED', 'STATUS_CHANGED', 'DEMO_SCHEDULED', 'FOLLOW_UP_SCHEDULED', 'FOLLOW_UP_COMPLETED', 'FOLLOW_UP_RESCHEDULED', 'TIMEZONE_UPDATED', 'CONVERTED', 'PAYMENT_RECORDED', 'CLIENT_UPDATED');
+CREATE TYPE "ActivityType" AS ENUM ('LEAD_CREATED', 'NOTE', 'REQUIREMENT_UPDATED', 'STATUS_CHANGED', 'DEMO_SCHEDULED', 'DEMO_COMPLETED', 'FOLLOW_UP_SCHEDULED', 'FOLLOW_UP_LOGGED', 'TIMEZONE_UPDATED', 'CONVERTED', 'PAYMENT_RECORDED', 'CLIENT_UPDATED');
+
+-- CreateEnum
+CREATE TYPE "FollowUpOutcome" AS ENUM ('FOLLOWED_UP_NEXT_DAY', 'FOLLOWED_UP_SPECIFIC_DATE', 'DEMO_COMPLETED', 'CONVERTED', 'LOST');
 
 -- CreateTable
 CREATE TABLE "User" (
@@ -30,6 +27,15 @@ CREATE TABLE "User" (
 );
 
 -- CreateTable
+CREATE TABLE "LeadSource" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "LeadSource_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "Client" (
     "id" TEXT NOT NULL,
     "name" TEXT NOT NULL,
@@ -42,11 +48,12 @@ CREATE TABLE "Client" (
     "timezoneConfident" BOOLEAN NOT NULL DEFAULT false,
     "requirement" TEXT,
     "notes" TEXT,
-    "leadSource" "LeadSource" NOT NULL DEFAULT 'OTHER',
+    "leadSourceId" TEXT,
     "status" "ClientStatus" NOT NULL DEFAULT 'NEW_LEAD',
     "dateAdded" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "demoAt" TIMESTAMP(3),
-    "assignedUserId" TEXT,
+    "nextFollowUpAt" TIMESTAMP(3),
+    "followUpPriority" BOOLEAN NOT NULL DEFAULT false,
     "convertedAt" TIMESTAMP(3),
     "productService" TEXT,
     "totalRevenue" DECIMAL(14,2),
@@ -63,23 +70,15 @@ CREATE TABLE "Client" (
 );
 
 -- CreateTable
-CREATE TABLE "FollowUp" (
+CREATE TABLE "FollowUpLog" (
     "id" TEXT NOT NULL,
     "clientId" TEXT NOT NULL,
-    "localDate" TEXT NOT NULL,
-    "localTime" TEXT NOT NULL,
-    "timezone" TEXT NOT NULL,
-    "scheduledAt" TIMESTAMP(3) NOT NULL,
+    "outcome" "FollowUpOutcome" NOT NULL,
     "note" TEXT,
-    "status" "FollowUpStatus" NOT NULL DEFAULT 'PENDING',
-    "assignedUserId" TEXT,
-    "completedAt" TIMESTAMP(3),
-    "rescheduledFromId" TEXT,
-    "isDefaultNoon" BOOLEAN NOT NULL DEFAULT false,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" TIMESTAMP(3) NOT NULL,
+    "nextFollowUpAt" TIMESTAMP(3),
+    "occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "FollowUp_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "FollowUpLog_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -116,6 +115,9 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE INDEX "User_email_idx" ON "User"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "LeadSource_name_key" ON "LeadSource"("name");
+
+-- CreateIndex
 CREATE INDEX "Client_phone_idx" ON "Client"("phone");
 
 -- CreateIndex
@@ -131,7 +133,7 @@ CREATE INDEX "Client_country_idx" ON "Client"("country");
 CREATE INDEX "Client_timezone_idx" ON "Client"("timezone");
 
 -- CreateIndex
-CREATE INDEX "Client_leadSource_idx" ON "Client"("leadSource");
+CREATE INDEX "Client_leadSourceId_idx" ON "Client"("leadSourceId");
 
 -- CreateIndex
 CREATE INDEX "Client_dateAdded_idx" ON "Client"("dateAdded");
@@ -140,19 +142,13 @@ CREATE INDEX "Client_dateAdded_idx" ON "Client"("dateAdded");
 CREATE INDEX "Client_convertedAt_idx" ON "Client"("convertedAt");
 
 -- CreateIndex
-CREATE INDEX "Client_assignedUserId_idx" ON "Client"("assignedUserId");
+CREATE INDEX "Client_nextFollowUpAt_idx" ON "Client"("nextFollowUpAt");
 
 -- CreateIndex
-CREATE INDEX "FollowUp_clientId_idx" ON "FollowUp"("clientId");
+CREATE INDEX "FollowUpLog_clientId_idx" ON "FollowUpLog"("clientId");
 
 -- CreateIndex
-CREATE INDEX "FollowUp_scheduledAt_idx" ON "FollowUp"("scheduledAt");
-
--- CreateIndex
-CREATE INDEX "FollowUp_status_idx" ON "FollowUp"("status");
-
--- CreateIndex
-CREATE INDEX "FollowUp_assignedUserId_idx" ON "FollowUp"("assignedUserId");
+CREATE INDEX "FollowUpLog_occurredAt_idx" ON "FollowUpLog"("occurredAt");
 
 -- CreateIndex
 CREATE INDEX "Payment_clientId_idx" ON "Payment"("clientId");
@@ -170,13 +166,10 @@ CREATE INDEX "Activity_occurredAt_idx" ON "Activity"("occurredAt");
 CREATE INDEX "Activity_type_idx" ON "Activity"("type");
 
 -- AddForeignKey
-ALTER TABLE "Client" ADD CONSTRAINT "Client_assignedUserId_fkey" FOREIGN KEY ("assignedUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Client" ADD CONSTRAINT "Client_leadSourceId_fkey" FOREIGN KEY ("leadSourceId") REFERENCES "LeadSource"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "FollowUp" ADD CONSTRAINT "FollowUp_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "FollowUp" ADD CONSTRAINT "FollowUp_assignedUserId_fkey" FOREIGN KEY ("assignedUserId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "FollowUpLog" ADD CONSTRAINT "FollowUpLog_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -186,3 +179,4 @@ ALTER TABLE "Activity" ADD CONSTRAINT "Activity_clientId_fkey" FOREIGN KEY ("cli
 
 -- AddForeignKey
 ALTER TABLE "Activity" ADD CONSTRAINT "Activity_actorId_fkey" FOREIGN KEY ("actorId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+

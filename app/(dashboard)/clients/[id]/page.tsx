@@ -14,19 +14,30 @@ import {
   BadgeCheck,
   Wallet,
   CheckCircle2,
-  XCircle,
+  Loader2,
+  Flame,
+  Presentation,
 } from "lucide-react";
-import { StatusBadge, PaymentStatusBadge, UrgencyBadge } from "@/components/StatusBadge";
+import { StatusBadge, PaymentStatusBadge } from "@/components/StatusBadge";
 import { LocalClock } from "@/components/LocalClock";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
 import { ClientFormModal } from "@/components/ClientFormModal";
 import { ConvertModal } from "@/components/ConvertModal";
 import { PaymentModal } from "@/components/PaymentModal";
-import { ScheduleFollowUpModal } from "@/components/ScheduleFollowUpModal";
-import { RescheduleModal } from "@/components/RescheduleModal";
+import { DemoScheduleModal } from "@/components/DemoScheduleModal";
+import { SetFollowUpDateModal } from "@/components/SetFollowUpDateModal";
+import { LostReasonModal } from "@/components/LostReasonModal";
 import { formatCurrency, formatDate, countryFlag } from "@/lib/format";
-import { followUpUrgency } from "@/lib/followups";
-import type { Client, FollowUp } from "@/lib/types";
+import { formatInIST } from "@/lib/followups";
+import type { Client } from "@/lib/types";
+
+const FOLLOWUP_OUTCOME_LABEL: Record<string, string> = {
+  FOLLOWED_UP_NEXT_DAY: "Followed up — next follow-up tomorrow",
+  FOLLOWED_UP_SPECIFIC_DATE: "Followed up — next follow-up on a specific date",
+  DEMO_COMPLETED: "Demo completed",
+  CONVERTED: "Converted",
+  LOST: "Marked lost",
+};
 
 export default function ClientDetailPage() {
   const params = useParams<{ id: string }>();
@@ -35,8 +46,11 @@ export default function ClientDetailPage() {
   const [showEdit, setShowEdit] = useState(false);
   const [showConvert, setShowConvert] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false);
-  const [rescheduling, setRescheduling] = useState<FollowUp | null>(null);
+  const [showDemo, setShowDemo] = useState(false);
+  const [showSetDate, setShowSetDate] = useState(false);
+  const [showLost, setShowLost] = useState(false);
+  const [completingDemo, setCompletingDemo] = useState(false);
+  const [markingTomorrow, setMarkingTomorrow] = useState(false);
   const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
@@ -53,12 +67,23 @@ export default function ClientDetailPage() {
     load();
   }, [load]);
 
-  async function markFollowUp(id: string, status: string) {
-    await fetch(`/api/followups/${id}`, {
-      method: "PATCH",
+  async function completeDemo() {
+    if (!client) return;
+    setCompletingDemo(true);
+    await fetch(`/api/clients/${client.id}/demo/complete`, { method: "POST" });
+    setCompletingDemo(false);
+    load();
+  }
+
+  async function markTomorrow() {
+    if (!client) return;
+    setMarkingTomorrow(true);
+    await fetch(`/api/clients/${client.id}/followup-action`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ action: "tomorrow" }),
     });
+    setMarkingTomorrow(false);
     load();
   }
 
@@ -77,8 +102,7 @@ export default function ClientDetailPage() {
     return <div className="p-8 text-slate-400 text-sm">Loading…</div>;
   }
 
-  const pendingFollowUps = (client.followUps ?? []).filter((f) => f.status === "PENDING");
-  const pastFollowUps = (client.followUps ?? []).filter((f) => f.status !== "PENDING");
+  const inFollowUpRotation = client.status === "NEW_LEAD" || client.status === "FOLLOW_UP";
 
   return (
     <div className="p-6 md:p-8 max-w-[1200px] mx-auto space-y-6">
@@ -88,10 +112,15 @@ export default function ClientDetailPage() {
         </button>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-2xl">{countryFlag(client.country)}</span>
               <h1 className="text-2xl font-semibold text-slate-900">{client.name}</h1>
               <StatusBadge status={client.status} />
+              {client.followUpPriority && (
+                <span className="badge bg-orange-50 text-orange-700">
+                  <Flame className="w-3 h-3" /> Priority
+                </span>
+              )}
             </div>
             <p className="text-sm text-slate-500 mt-1">{client.requirement ?? "No requirement noted"}</p>
           </div>
@@ -99,10 +128,18 @@ export default function ClientDetailPage() {
             <button onClick={() => setShowEdit(true)} className="btn-secondary">
               <Pencil className="w-4 h-4" /> Edit
             </button>
-            <button onClick={() => setShowSchedule(true)} className="btn-secondary">
-              <CalendarPlus className="w-4 h-4" /> Schedule Follow-up
-            </button>
-            {client.status !== "CONVERTED" && (
+            {inFollowUpRotation && (
+              <button onClick={() => setShowDemo(true)} className="btn-secondary">
+                <Presentation className="w-4 h-4" /> Schedule Demo
+              </button>
+            )}
+            {client.status === "DEMO_SCHEDULED" && (
+              <button onClick={completeDemo} disabled={completingDemo} className="btn-secondary">
+                {completingDemo ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                Mark Demo Done
+              </button>
+            )}
+            {client.status !== "CONVERTED" && client.status !== "LOST" && (
               <button onClick={() => setShowConvert(true)} className="btn-primary">
                 <BadgeCheck className="w-4 h-4" /> Convert Client
               </button>
@@ -144,9 +181,9 @@ export default function ClientDetailPage() {
                   <LocalClock timezone={client.timezone} withDate />
                 </dd>
               </div>
-              <Info label="Lead source" value={client.leadSource.replace("_", " ")} />
+              <Info label="Lead source" value={client.leadSource?.name ?? "—"} />
               <Info label="Date added" value={formatDate(client.dateAdded)} />
-              {client.assignedUser && <Info label="Assigned to" value={client.assignedUser.name} />}
+              {client.demoAt && <Info label="Demo scheduled (IST)" value={formatInIST(new Date(client.demoAt))} />}
             </dl>
             {client.notes && (
               <div className="mt-4 pt-4 border-t border-slate-100">
@@ -202,49 +239,54 @@ export default function ClientDetailPage() {
             </div>
           )}
 
-          {/* Follow-ups */}
-          <div className="card p-5">
-            <h2 className="text-sm font-semibold text-slate-900 mb-3">Follow-ups</h2>
-            {pendingFollowUps.length === 0 && pastFollowUps.length === 0 && (
-              <p className="text-sm text-slate-400">No follow-ups scheduled yet.</p>
-            )}
-            <div className="space-y-2">
-              {[...pendingFollowUps, ...pastFollowUps].map((f) => {
-                const urgency = followUpUrgency(f.status, new Date(f.scheduledAt));
-                return (
-                  <div key={f.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium text-slate-800">
-                        {f.localDate} at {f.localTime} ({f.timezone})
-                      </p>
-                      {f.note && <p className="text-xs text-slate-500 mt-0.5">{f.note}</p>}
-                      {f.assignedUser && (
-                        <p className="text-xs text-slate-400 mt-0.5">Assigned to {f.assignedUser.name}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {f.status === "PENDING" ? (
-                        <>
-                          <UrgencyBadge urgency={urgency} />
-                          <button onClick={() => markFollowUp(f.id, "COMPLETED")} className="btn-ghost text-xs py-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" /> Done
-                          </button>
-                          <button onClick={() => setRescheduling(f)} className="btn-ghost text-xs py-1">
-                            Reschedule
-                          </button>
-                          <button onClick={() => markFollowUp(f.id, "CANCELLED")} className="btn-ghost text-xs py-1 text-red-500">
-                            <XCircle className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs text-slate-400 capitalize">{f.status.toLowerCase()}</span>
-                      )}
-                    </div>
+          {/* Next follow-up */}
+          {inFollowUpRotation && (
+            <div className="card p-5">
+              <h2 className="text-sm font-semibold text-slate-900 mb-3">Next Follow-up</h2>
+              {client.nextFollowUpAt ? (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm text-slate-800 font-medium">Call at {formatInIST(new Date(client.nextFollowUpAt))}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {formatDate(client.nextFollowUpAt)} · 1:00 PM {client.timezone ?? "IST (fallback)"}
+                    </p>
                   </div>
-                );
-              })}
+                  <div className="flex gap-2">
+                    <button onClick={markTomorrow} disabled={markingTomorrow} className="btn-secondary text-xs py-1.5">
+                      {markingTomorrow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                      Followed Up — Tomorrow
+                    </button>
+                    <button onClick={() => setShowSetDate(true)} className="btn-secondary text-xs py-1.5">
+                      <CalendarPlus className="w-3.5 h-3.5" /> Set Date
+                    </button>
+                    <button onClick={() => setShowLost(true)} className="btn-ghost text-xs py-1.5 text-red-500">
+                      Mark Lost
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-400">No follow-up scheduled.</p>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Follow-up history */}
+          {client.followUpLogs && client.followUpLogs.length > 0 && (
+            <div className="card p-5">
+              <h2 className="text-sm font-semibold text-slate-900 mb-3">Follow-up History</h2>
+              <div className="space-y-2">
+                {client.followUpLogs.map((log) => (
+                  <div key={log.id} className="flex items-start justify-between rounded-lg border border-slate-100 px-3 py-2.5">
+                    <div>
+                      <p className="text-sm text-slate-800">{FOLLOWUP_OUTCOME_LABEL[log.outcome] ?? log.outcome}</p>
+                      {log.note && <p className="text-xs text-slate-500 mt-0.5">{log.note}</p>}
+                    </div>
+                    <span className="text-xs text-slate-400 shrink-0">{formatDate(log.occurredAt)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -285,23 +327,32 @@ export default function ClientDetailPage() {
           }}
         />
       )}
-      {showSchedule && (
-        <ScheduleFollowUpModal
+      {showDemo && (
+        <DemoScheduleModal
           client={client}
-          onClose={() => setShowSchedule(false)}
+          onClose={() => setShowDemo(false)}
           onScheduled={() => {
-            setShowSchedule(false);
+            setShowDemo(false);
             load();
           }}
         />
       )}
-      {rescheduling && client.timezone && (
-        <RescheduleModal
-          followUp={rescheduling}
-          clientTimezone={client.timezone}
-          onClose={() => setRescheduling(null)}
-          onRescheduled={() => {
-            setRescheduling(null);
+      {showSetDate && (
+        <SetFollowUpDateModal
+          client={client}
+          onClose={() => setShowSetDate(false)}
+          onDone={() => {
+            setShowSetDate(false);
+            load();
+          }}
+        />
+      )}
+      {showLost && (
+        <LostReasonModal
+          client={client}
+          onClose={() => setShowLost(false)}
+          onDone={() => {
+            setShowLost(false);
             load();
           }}
         />

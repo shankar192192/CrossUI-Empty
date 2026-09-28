@@ -36,8 +36,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         amountReceived: data.amountReceived,
         paymentDueDate: data.paymentDueDate ? new Date(data.paymentDueDate) : null,
         conversionNotes: data.notes || null,
+        nextFollowUpAt: null,
+        followUpPriority: false,
       },
     });
+
+    await tx.followUpLog.create({ data: { clientId: client.id, outcome: "CONVERTED" } });
 
     await logActivity(tx, {
       clientId: client.id,
@@ -70,7 +74,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const full = await prisma.client.findUnique({
     where: { id: updated.id },
     include: {
-      followUps: { orderBy: { scheduledAt: "desc" } },
+      leadSource: true,
+      followUpLogs: { orderBy: { occurredAt: "desc" } },
       payments: { orderBy: { paidAt: "desc" } },
       activities: { orderBy: { occurredAt: "desc" } },
     },

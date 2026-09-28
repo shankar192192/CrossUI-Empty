@@ -6,6 +6,7 @@ import { createClientSchema } from "@/lib/validation";
 import { resolveClientIdentity } from "@/lib/clientResolution";
 import { logActivity } from "@/lib/activityLog";
 import { serializeClient } from "@/lib/serialize";
+import { computeNextDayFollowUp, isDueToday } from "@/lib/followups";
 
 export async function GET(req: NextRequest) {
   try {
@@ -19,11 +20,10 @@ export async function GET(req: NextRequest) {
   const status = sp.get("status");
   const country = sp.get("country");
   const timezone = sp.get("timezone");
-  const leadSource = sp.get("leadSource");
+  const leadSourceId = sp.get("leadSourceId");
   const converted = sp.get("converted"); // "true" | "false"
   const paymentStatus = sp.get("paymentStatus");
   const followUpDue = sp.get("followUpDue"); // "true"
-  const assignedUserId = sp.get("assignedUserId");
   const dateFrom = sp.get("dateFrom");
   const dateTo = sp.get("dateTo");
   const convertedFrom = sp.get("convertedFrom");
@@ -45,32 +45,31 @@ export async function GET(req: NextRequest) {
   if (status) where.status = status as Prisma.EnumClientStatusFilter["equals"];
   if (country) where.country = country;
   if (timezone) where.timezone = timezone;
-  if (leadSource) where.leadSource = leadSource as Prisma.EnumLeadSourceFilter["equals"];
-  if (assignedUserId) where.assignedUserId = assignedUserId;
+  if (leadSourceId) where.leadSourceId = leadSourceId;
   if (converted === "true") where.status = "CONVERTED";
   if (converted === "false") where.status = { not: "CONVERTED" };
   if (dateFrom || dateTo) {
     where.dateAdded = {
       ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
-      ...(dateTo ? { lte: new Date(dateTo) } : {}),
+      ...(dateTo ? { lte: new Date(dateTo + "T23:59:59") } : {}),
     };
   }
   if (convertedFrom || convertedTo) {
     where.convertedAt = {
       ...(convertedFrom ? { gte: new Date(convertedFrom) } : {}),
-      ...(convertedTo ? { lte: new Date(convertedTo) } : {}),
+      ...(convertedTo ? { lte: new Date(convertedTo + "T23:59:59") } : {}),
     };
   }
   if (followUpDue === "true") {
-    where.followUps = {
-      some: { status: "PENDING", scheduledAt: { lte: new Date() } },
-    };
+    where.status = { in: ["NEW_LEAD", "FOLLOW_UP"] };
+    where.nextFollowUpAt = { lte: new Date() };
   }
 
   let orderBy: Prisma.ClientOrderByWithRelationInput = { dateAdded: "desc" };
   if (sort === "oldest") orderBy = { dateAdded: "asc" };
   if (sort === "revenue") orderBy = { totalRevenue: "desc" };
   if (sort === "name") orderBy = { name: "asc" };
+  if (sort === "followup") orderBy = { nextFollowUpAt: "asc" };
 
   const [total, clients] = await Promise.all([
     prisma.client.count({ where }),
@@ -80,8 +79,7 @@ export async function GET(req: NextRequest) {
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: {
-        followUps: { where: { status: "PENDING" }, orderBy: { scheduledAt: "asc" }, take: 1 },
-        assignedUser: { select: { id: true, name: true } },
+        leadSource: true,
         payments: { orderBy: { paidAt: "desc" } },
       },
     }),
@@ -98,15 +96,6 @@ export async function GET(req: NextRequest) {
   }
   if (sort === "profit") {
     serialized = [...serialized].sort((a, b) => (b.profit ?? 0) - (a.profit ?? 0));
-  }
-  if (sort === "followup") {
-    serialized = [...serialized].sort((a, b) => {
-      const aScheduledAt = a.followUps?.[0]?.scheduledAt as string | Date | undefined;
-      const bScheduledAt = b.followUps?.[0]?.scheduledAt as string | Date | undefined;
-      const at = aScheduledAt ? new Date(aScheduledAt).getTime() : Infinity;
-      const bt = bScheduledAt ? new Date(bScheduledAt).getTime() : Infinity;
-      return at - bt;
-    });
   }
 
   return NextResponse.json({ clients: serialized, total, page, pageSize });
@@ -157,6 +146,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Every new lead automatically gets a follow-up slot for tomorrow —
+  // client-local 1PM if the timezone is confirmed, IST fallback otherwise.
+  const nextFollowUpAt = computeNextDayFollowUp(identity.timezone);
+
   const client = await prisma.client.create({
     data: {
       name: data.name,
@@ -169,10 +162,10 @@ export async function POST(req: NextRequest) {
       timezoneConfident: identity.timezoneConfident,
       requirement: data.requirement || null,
       notes: data.notes || null,
-      leadSource: data.leadSource,
+      leadSourceId: data.leadSourceId || null,
       dateAdded: data.dateAdded ? new Date(data.dateAdded) : new Date(),
-      assignedUserId: data.assignedUserId || null,
       status: "NEW_LEAD",
+      nextFollowUpAt,
     },
   });
 
@@ -182,6 +175,13 @@ export async function POST(req: NextRequest) {
     message: `Lead created${data.requirement ? ` — ${data.requirement}` : ""}`,
     actorId: session.userId,
   });
+  await logActivity(prisma, {
+    clientId: client.id,
+    type: "FOLLOW_UP_SCHEDULED",
+    message: `Follow-up automatically scheduled for tomorrow`,
+    actorId: session.userId,
+  });
 
-  return NextResponse.json({ client: serializeClient(client) }, { status: 201 });
+  const full = await prisma.client.findUnique({ where: { id: client.id }, include: { leadSource: true } });
+  return NextResponse.json({ client: serializeClient(full), dueToday: isDueToday(nextFollowUpAt) }, { status: 201 });
 }

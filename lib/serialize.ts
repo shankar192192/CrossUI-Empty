@@ -24,7 +24,6 @@ export function serializeClient(client: Record<string, unknown> | null) {
       : null;
 
   const payments = client.payments as Record<string, unknown>[] | undefined;
-  const followUps = client.followUps as Record<string, unknown>[] | undefined;
 
   return {
     ...client,
@@ -35,14 +34,9 @@ export function serializeClient(client: Record<string, unknown> | null) {
     pendingPayment,
     paymentStatus,
     payments: payments?.map(serializePayment),
-    followUps: followUps?.map(serializeFollowUp),
   };
 }
 
 export function serializePayment(payment: Record<string, unknown>) {
   return { ...payment, amount: num(payment.amount as Prisma.Decimal | null | undefined) };
-}
-
-export function serializeFollowUp(followUp: Record<string, unknown>) {
-  return followUp;
 }

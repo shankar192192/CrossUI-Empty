@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { resolveClientIdentity } from "../lib/clientResolution";
-import { computeScheduledAt, computeDefaultNoonFollowUp } from "../lib/followups";
+import { computeScheduledAt, computeNextDayFollowUp, DEMO_TIMEZONE } from "../lib/followups";
 import { calculateProfit, calculatePendingPayment } from "../lib/calculations";
 
 const prisma = new PrismaClient();
@@ -10,8 +10,9 @@ async function main() {
   console.log("Clearing existing data…");
   await prisma.activity.deleteMany();
   await prisma.payment.deleteMany();
-  await prisma.followUp.deleteMany();
+  await prisma.followUpLog.deleteMany();
   await prisma.client.deleteMany();
+  await prisma.leadSource.deleteMany();
   await prisma.user.deleteMany();
 
   console.log("Creating users…");
@@ -21,12 +22,20 @@ async function main() {
   const admin = await prisma.user.create({
     data: { name: "Shankar Mutneja", email: "admin@prepseven.com", passwordHash: adminPasswordHash, role: "ADMIN" },
   });
-  const sarah = await prisma.user.create({
+  await prisma.user.create({
     data: { name: "Sarah Reyes", email: "sarah@prepseven.com", passwordHash: salesPasswordHash, role: "SALESPERSON" },
   });
-  const raj = await prisma.user.create({
+  await prisma.user.create({
     data: { name: "Raj Malhotra", email: "raj@prepseven.com", passwordHash: salesPasswordHash, role: "SALESPERSON" },
   });
+
+  console.log("Creating lead sources…");
+  const [seo, googleAds, chatgptAds] = await Promise.all([
+    prisma.leadSource.create({ data: { name: "SEO" } }),
+    prisma.leadSource.create({ data: { name: "Google Ads" } }),
+    prisma.leadSource.create({ data: { name: "ChatGPT Ads" } }),
+  ]);
+  const sourceIds = [seo.id, googleAds.id, chatgptAds.id];
 
   const now = new Date();
   const daysAgo = (n: number) => new Date(now.getTime() - n * 86_400_000);
@@ -37,17 +46,15 @@ async function main() {
     email?: string;
     manualTimezone?: string;
     requirement: string;
-    notes?: string;
-    leadSource: string;
     dateAdded: Date;
     status: "NEW_LEAD" | "DEMO_SCHEDULED" | "FOLLOW_UP" | "CONVERTED" | "LOST";
-    assignedUserId?: string;
-    demoAt?: Date;
-    followUp?: { localDate: string; localTime: string; note?: string; status?: "PENDING" | "COMPLETED" };
+    demoIn?: { daysFromNow: number; time: string }; // IST
+    followUpPriority?: boolean;
+    followUpLog?: { outcome: "FOLLOWED_UP_NEXT_DAY" | "FOLLOWED_UP_SPECIFIC_DATE"; note?: string };
     conversion?: {
       revenue: number;
       cost: number;
-      payments: number[]; // sequential payment amounts
+      payments: number[];
       paymentDueDate?: Date;
       productService: string;
       convertedDaysAgo: number;
@@ -61,10 +68,8 @@ async function main() {
       phone: "+919876543210",
       email: "aditya.sharma@example.com",
       requirement: "IB Mathematics AA HL tutoring",
-      leadSource: "WEBSITE",
       dateAdded: daysAgo(2),
       status: "NEW_LEAD",
-      assignedUserId: sarah.id,
     },
     {
       name: "John Smith",
@@ -72,32 +77,26 @@ async function main() {
       manualTimezone: "America/New_York",
       email: "john.smith@example.com",
       requirement: "IB Physics HL tutoring",
-      leadSource: "REFERRAL",
       dateAdded: daysAgo(5),
       status: "FOLLOW_UP",
-      assignedUserId: sarah.id,
-      followUp: { localDate: now.toISOString().slice(0, 10), localTime: "12:00", note: "Discuss weekly schedule and pricing" },
+      followUpLog: { outcome: "FOLLOWED_UP_NEXT_DAY", note: "Discussed weekly schedule and pricing" },
     },
     {
       name: "Emily Clarke",
       phone: "+442071838750",
       email: "emily.clarke@example.com",
       requirement: "IB Chemistry SL tutoring",
-      leadSource: "INSTAGRAM",
       dateAdded: daysAgo(3),
       status: "DEMO_SCHEDULED",
-      assignedUserId: raj.id,
-      demoAt: new Date(now.getTime() + 2 * 86_400_000),
+      demoIn: { daysFromNow: 2, time: "16:00" },
     },
     {
       name: "Ahmed Al Maktoum",
       phone: "+971501234567",
       email: "ahmed.almaktoum@example.com",
       requirement: "IB Economics HL tutoring",
-      leadSource: "GOOGLE_ADS",
       dateAdded: daysAgo(20),
       status: "CONVERTED",
-      assignedUserId: sarah.id,
       conversion: {
         revenue: 90000,
         cost: 30000,
@@ -112,10 +111,8 @@ async function main() {
       phone: "+61291234567",
       email: "olivia.turner@example.com",
       requirement: "IB English A Lang & Lit tutoring",
-      leadSource: "WHATSAPP_INBOUND",
       dateAdded: daysAgo(30),
       status: "CONVERTED",
-      assignedUserId: raj.id,
       conversion: {
         revenue: 60000,
         cost: 18000,
@@ -129,10 +126,8 @@ async function main() {
       phone: "+6591234567",
       email: "wei.tan@example.com",
       requirement: "IB Biology HL tutoring",
-      leadSource: "FACEBOOK",
       dateAdded: daysAgo(18),
       status: "LOST",
-      assignedUserId: sarah.id,
       lostReason: "Chose a local tutor for scheduling convenience",
     },
     {
@@ -141,32 +136,27 @@ async function main() {
       manualTimezone: "America/Toronto",
       email: "michael.brown@example.com",
       requirement: "IB History HL tutoring",
-      leadSource: "WALK_IN",
       dateAdded: daysAgo(1),
       status: "FOLLOW_UP",
-      assignedUserId: raj.id,
-      followUp: { localDate: now.toISOString().slice(0, 10), localTime: "12:00", note: "Follow up on demo feedback" },
+      followUpPriority: true,
+      followUpLog: { outcome: "FOLLOWED_UP_NEXT_DAY" },
     },
     {
       name: "Hans Mueller",
       phone: "+4930123456",
       email: "hans.mueller@example.com",
       requirement: "IB Physics + German Ab Initio tutoring",
-      leadSource: "PARTNER_SCHOOL",
       dateAdded: daysAgo(4),
       status: "NEW_LEAD",
-      assignedUserId: sarah.id,
     },
     {
       name: "Priya Nair",
       phone: "+919845098450",
       email: "priya.nair@example.com",
       requirement: "IB Computer Science HL tutoring",
-      leadSource: "OTHER",
       dateAdded: daysAgo(6),
       status: "DEMO_SCHEDULED",
-      assignedUserId: raj.id,
-      demoAt: new Date(now.getTime() + 86_400_000),
+      demoIn: { daysFromNow: 1, time: "11:00" },
     },
     {
       // US spans multiple timezones — phone alone can't determine it, so we
@@ -176,10 +166,8 @@ async function main() {
       manualTimezone: "America/Los_Angeles",
       email: "sophia.martinez@example.com",
       requirement: "IB Spanish B tutoring",
-      leadSource: "GOOGLE_ADS",
       dateAdded: daysAgo(40),
       status: "CONVERTED",
-      assignedUserId: sarah.id,
       conversion: {
         revenue: 45000,
         cost: 12000,
@@ -196,28 +184,30 @@ async function main() {
       manualTimezone: "Australia/Perth",
       email: "liam.oconnor@example.com",
       requirement: "IB Business Management tutoring",
-      leadSource: "REFERRAL",
       dateAdded: daysAgo(7),
       status: "FOLLOW_UP",
-      assignedUserId: raj.id,
-      followUp: { localDate: now.toISOString().slice(0, 10), localTime: "12:00" },
+      followUpLog: { outcome: "FOLLOWED_UP_NEXT_DAY" },
     },
     {
       // US number with no manual override -> timezone genuinely undetermined,
-      // surfaced in the UI as "Needs confirmation" rather than guessed.
+      // surfaced in the UI as "Needs confirmation" rather than guessed. The
+      // follow-up still gets scheduled (falls back to IST) so it's never
+      // silently dropped from the daily list.
       name: "Daniel Carter",
       phone: "+16465559981",
       email: "daniel.carter@example.com",
       requirement: "IB Psychology HL tutoring",
-      leadSource: "WEBSITE",
       dateAdded: daysAgo(1),
       status: "NEW_LEAD",
-      assignedUserId: sarah.id,
     },
   ];
 
-  for (const sc of seedClients) {
+  for (const [i, sc] of seedClients.entries()) {
     const identity = resolveClientIdentity({ phone: sc.phone, manualTimezone: sc.manualTimezone });
+    const leadSourceId = sourceIds[i % sourceIds.length];
+
+    const nextFollowUpAt =
+      sc.status === "NEW_LEAD" || sc.status === "FOLLOW_UP" ? computeNextDayFollowUp(identity.timezone, sc.dateAdded) : null;
 
     const client = await prisma.client.create({
       data: {
@@ -230,12 +220,11 @@ async function main() {
         timezoneSource: identity.timezoneSource,
         timezoneConfident: identity.timezoneConfident,
         requirement: sc.requirement,
-        notes: sc.notes ?? null,
-        leadSource: sc.leadSource as never,
+        leadSourceId,
         dateAdded: sc.dateAdded,
         status: sc.status,
-        assignedUserId: sc.assignedUserId ?? null,
-        demoAt: sc.demoAt ?? null,
+        followUpPriority: sc.followUpPriority ?? false,
+        nextFollowUpAt,
       },
     });
 
@@ -244,58 +233,43 @@ async function main() {
         clientId: client.id,
         type: "LEAD_CREATED",
         message: `Lead created — ${sc.requirement}`,
-        actorId: sc.assignedUserId ?? admin.id,
+        actorId: admin.id,
         occurredAt: sc.dateAdded,
       },
     });
 
-    if (sc.demoAt) {
+    if (sc.demoIn) {
+      const demoAt = computeScheduledAt(
+        new Date(now.getTime() + sc.demoIn.daysFromNow * 86_400_000).toISOString().slice(0, 10),
+        sc.demoIn.time,
+        DEMO_TIMEZONE
+      );
+      await prisma.client.update({ where: { id: client.id }, data: { demoAt } });
       await prisma.activity.create({
         data: {
           clientId: client.id,
           type: "DEMO_SCHEDULED",
-          message: `Demo scheduled for ${sc.demoAt.toDateString()}`,
-          actorId: sc.assignedUserId ?? admin.id,
-          occurredAt: new Date(sc.dateAdded.getTime() + 3_600_000),
+          message: `Demo scheduled for ${sc.demoIn.time} in ${sc.demoIn.daysFromNow} day(s) (IST)`,
+          actorId: admin.id,
         },
       });
     }
 
-    if (sc.followUp && client.timezone) {
-      const scheduledAt = computeScheduledAt(sc.followUp.localDate, sc.followUp.localTime, client.timezone);
-      await prisma.followUp.create({
+    if (sc.followUpLog) {
+      await prisma.followUpLog.create({
         data: {
           clientId: client.id,
-          localDate: sc.followUp.localDate,
-          localTime: sc.followUp.localTime,
-          timezone: client.timezone,
-          scheduledAt,
-          note: sc.followUp.note ?? null,
-          isDefaultNoon: sc.followUp.localTime === "12:00",
-          status: sc.followUp.status ?? "PENDING",
-          assignedUserId: sc.assignedUserId ?? null,
+          outcome: sc.followUpLog.outcome,
+          note: sc.followUpLog.note ?? null,
+          nextFollowUpAt,
         },
       });
       await prisma.activity.create({
         data: {
           clientId: client.id,
-          type: "FOLLOW_UP_SCHEDULED",
-          message: `Follow-up scheduled for ${sc.followUp.localTime} on ${sc.followUp.localDate} (${client.timezone})`,
-          actorId: sc.assignedUserId ?? admin.id,
-        },
-      });
-    } else if (client.timezone && (sc.status === "FOLLOW_UP")) {
-      const def = computeDefaultNoonFollowUp(client.timezone);
-      await prisma.followUp.create({
-        data: {
-          clientId: client.id,
-          localDate: def.localDate,
-          localTime: def.localTime,
-          timezone: client.timezone,
-          scheduledAt: def.scheduledAt,
-          isDefaultNoon: true,
-          status: "PENDING",
-          assignedUserId: sc.assignedUserId ?? null,
+          type: "FOLLOW_UP_LOGGED",
+          message: "Followed up — next follow-up scheduled for tomorrow",
+          actorId: admin.id,
         },
       });
     }
@@ -315,32 +289,35 @@ async function main() {
           amountReceived,
           paymentDueDate: paymentDueDate ?? null,
           conversionNotes: "Converted after a successful trial session.",
+          nextFollowUpAt: null,
         },
       });
+
+      await prisma.followUpLog.create({ data: { clientId: client.id, outcome: "CONVERTED", occurredAt: convertedAt } });
 
       await prisma.activity.create({
         data: {
           clientId: client.id,
           type: "CONVERTED",
           message: `Client converted — ${productService}. Revenue recorded: ${revenue}`,
-          actorId: sc.assignedUserId ?? admin.id,
+          actorId: admin.id,
           occurredAt: convertedAt,
         },
       });
 
       let paidSoFar = 0;
-      for (const [i, amount] of payments.entries()) {
+      for (const [j, amount] of payments.entries()) {
         paidSoFar += amount;
-        const paidAt = new Date(convertedAt.getTime() + i * 5 * 86_400_000);
+        const paidAt = new Date(convertedAt.getTime() + j * 5 * 86_400_000);
         await prisma.payment.create({
-          data: { clientId: client.id, amount, paidAt, method: i === 0 ? "Bank Transfer" : "UPI" },
+          data: { clientId: client.id, amount, paidAt, method: j === 0 ? "Bank Transfer" : "UPI" },
         });
         await prisma.activity.create({
           data: {
             clientId: client.id,
             type: "PAYMENT_RECORDED",
             message: `Payment recorded: ${amount} (total received: ${paidSoFar})`,
-            actorId: sc.assignedUserId ?? admin.id,
+            actorId: admin.id,
             occurredAt: paidAt,
           },
         });
@@ -354,20 +331,21 @@ async function main() {
     if (sc.status === "LOST") {
       await prisma.client.update({
         where: { id: client.id },
-        data: { lostAt: now, lostReason: sc.lostReason ?? null },
+        data: { lostAt: now, lostReason: sc.lostReason ?? null, nextFollowUpAt: null },
       });
+      await prisma.followUpLog.create({ data: { clientId: client.id, outcome: "LOST", note: sc.lostReason ?? null } });
       await prisma.activity.create({
         data: {
           clientId: client.id,
           type: "STATUS_CHANGED",
-          message: `Status changed from New Lead to Lost — ${sc.lostReason ?? ""}`,
-          actorId: sc.assignedUserId ?? admin.id,
+          message: `Status changed to Lost — ${sc.lostReason ?? ""}`,
+          actorId: admin.id,
         },
       });
     }
   }
 
-  console.log(`Seed complete: ${seedClients.length} clients, 3 users.`);
+  console.log(`Seed complete: ${seedClients.length} clients, 3 users, 3 lead sources.`);
   console.log("Login with: admin@prepseven.com / admin123  or  sarah@prepseven.com / sales123");
 }
 

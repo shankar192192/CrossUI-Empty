@@ -19,8 +19,9 @@ import { FollowUpCard } from "@/components/FollowUpCard";
 import { StatusBadge, PaymentStatusBadge } from "@/components/StatusBadge";
 import { LocalClock } from "@/components/LocalClock";
 import { ClientFormModal } from "@/components/ClientFormModal";
+import { DateRangeFilter, type DateRange } from "@/components/DateRangeFilter";
 import { countryFlag, formatCurrency, formatDate } from "@/lib/format";
-import type { Client, DashboardMetrics, FollowUp } from "@/lib/types";
+import type { Client, DashboardMetrics } from "@/lib/types";
 
 function greeting() {
   const h = new Date().getHours();
@@ -31,21 +32,27 @@ function greeting() {
 
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [todaysFollowUps, setTodaysFollowUps] = useState<(FollowUp & { client: Client })[]>([]);
+  const [todaysFollowUps, setTodaysFollowUps] = useState<Client[]>([]);
   const [recentLeads, setRecentLeads] = useState<Client[]>([]);
   const [attentionPayments, setAttentionPayments] = useState<Client[]>([]);
   const [showAddClient, setShowAddClient] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   const load = useCallback(async () => {
+    const params = new URLSearchParams();
+    if (dateRange) {
+      params.set("dateFrom", dateRange.from);
+      params.set("dateTo", dateRange.to);
+    }
     const [dashRes, paymentsRes] = await Promise.all([
-      fetch("/api/dashboard").then((r) => r.json()),
+      fetch(`/api/dashboard?${params.toString()}`).then((r) => r.json()),
       fetch("/api/clients?converted=true&sort=pending&pageSize=8").then((r) => r.json()),
     ]);
     setMetrics(dashRes.metrics);
     setTodaysFollowUps(dashRes.todaysFollowUps ?? []);
     setRecentLeads(dashRes.recentLeads ?? []);
     setAttentionPayments((paymentsRes.clients ?? []).filter((c: Client) => (c.pendingPayment ?? 0) > 0));
-  }, []);
+  }, [dateRange]);
 
   useEffect(() => {
     load();
@@ -53,20 +60,27 @@ export default function DashboardPage() {
     return () => clearInterval(id);
   }, [load]);
 
+  function handleFollowUpChanged(id: string) {
+    setTodaysFollowUps((prev) => prev.filter((c) => c.id !== id));
+  }
+
   if (!metrics) {
     return <div className="p-8 text-slate-400 text-sm">Loading dashboard…</div>;
   }
 
   return (
     <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">{greeting()}</h1>
           <p className="text-sm text-slate-500 mt-1">Here&apos;s what&apos;s happening across your pipeline.</p>
         </div>
-        <button onClick={() => setShowAddClient(true)} className="btn-primary">
-          <Plus className="w-4 h-4" /> Add Client
-        </button>
+        <div className="flex items-center gap-3">
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          <button onClick={() => setShowAddClient(true)} className="btn-primary">
+            <Plus className="w-4 h-4" /> Add Client
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
@@ -105,8 +119,8 @@ export default function DashboardPage() {
           <div className="card p-6 text-sm text-slate-400 text-center">No follow-ups due today. 🎉</div>
         ) : (
           <div className="space-y-3">
-            {todaysFollowUps.map((f) => (
-              <FollowUpCard key={f.id} followUp={f} onChanged={load} />
+            {todaysFollowUps.slice(0, 5).map((c) => (
+              <FollowUpCard key={c.id} client={c} onChanged={() => handleFollowUpChanged(c.id)} />
             ))}
           </div>
         )}

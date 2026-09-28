@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { PaymentStatusBadge } from "@/components/StatusBadge";
 import { PaymentModal } from "@/components/PaymentModal";
+import { DateRangeFilter, type DateRange } from "@/components/DateRangeFilter";
 import { formatCurrency, formatDate } from "@/lib/format";
 import type { Client } from "@/lib/types";
 
@@ -20,16 +21,21 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [payingClient, setPayingClient] = useState<Client | null>(null);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams({ converted: "true", pageSize: "100", sort: "pending" });
     if (statusFilter) params.set("paymentStatus", statusFilter);
+    if (dateRange) {
+      params.set("convertedFrom", dateRange.from);
+      params.set("convertedTo", dateRange.to);
+    }
     const res = await fetch(`/api/clients?${params.toString()}`);
     const data = await res.json();
     setClients(data.clients ?? []);
     setLoading(false);
-  }, [statusFilter]);
+  }, [statusFilter, dateRange]);
 
   useEffect(() => {
     load();
@@ -54,9 +60,12 @@ export default function PaymentsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-900">Payments</h1>
-        <p className="text-sm text-slate-500 mt-1">Track revenue collection across all converted clients</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900">Payments</h1>
+          <p className="text-sm text-slate-500 mt-1">Track revenue collection across all converted clients</p>
+        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">

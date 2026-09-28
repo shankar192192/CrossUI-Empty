@@ -5,11 +5,9 @@ import {
   RefreshCw,
   CalendarClock,
   CalendarCheck2,
-  CalendarX2,
   Globe2,
   BadgeCheck,
   Wallet,
-  Pencil,
   LucideIcon,
 } from "lucide-react";
 import { formatDateTime } from "@/lib/format";
@@ -21,13 +19,12 @@ const ICONS: Record<string, LucideIcon> = {
   REQUIREMENT_UPDATED: FileEdit,
   STATUS_CHANGED: RefreshCw,
   DEMO_SCHEDULED: CalendarClock,
+  DEMO_COMPLETED: CalendarCheck2,
   FOLLOW_UP_SCHEDULED: CalendarClock,
-  FOLLOW_UP_COMPLETED: CalendarCheck2,
-  FOLLOW_UP_RESCHEDULED: CalendarX2,
+  FOLLOW_UP_LOGGED: CalendarCheck2,
   TIMEZONE_UPDATED: Globe2,
   CONVERTED: BadgeCheck,
   PAYMENT_RECORDED: Wallet,
-  CLIENT_UPDATED: Pencil,
 };
 
 export function ActivityTimeline({ activities }: { activities: Activity[] }) {

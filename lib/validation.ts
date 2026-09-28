@@ -1,17 +1,5 @@
 import { z } from "zod";
 
-export const LEAD_SOURCES = [
-  "WEBSITE",
-  "REFERRAL",
-  "INSTAGRAM",
-  "FACEBOOK",
-  "GOOGLE_ADS",
-  "WHATSAPP_INBOUND",
-  "WALK_IN",
-  "PARTNER_SCHOOL",
-  "OTHER",
-] as const;
-
 export const CLIENT_STATUSES = [
   "NEW_LEAD",
   "DEMO_SCHEDULED",
@@ -27,10 +15,9 @@ export const createClientSchema = z
     email: z.string().trim().email("Invalid email address").optional().or(z.literal("")),
     requirement: z.string().trim().max(2000).optional().or(z.literal("")),
     notes: z.string().trim().max(5000).optional().or(z.literal("")),
-    leadSource: z.enum(LEAD_SOURCES).default("OTHER"),
+    leadSourceId: z.string().trim().optional().or(z.literal("")),
     dateAdded: z.string().optional(), // ISO date string; defaults to now
     manualTimezone: z.string().trim().optional().or(z.literal("")),
-    assignedUserId: z.string().trim().optional().or(z.literal("")),
   })
   .refine((data) => (data.phone && data.phone.length > 0) || (data.email && data.email.length > 0), {
     message: "Provide at least a phone number or an email address",
@@ -45,11 +32,9 @@ export const updateClientSchema = z.object({
   email: z.string().trim().email().optional().or(z.literal("")),
   requirement: z.string().trim().max(2000).optional().or(z.literal("")),
   notes: z.string().trim().max(5000).optional().or(z.literal("")),
-  leadSource: z.enum(LEAD_SOURCES).optional(),
+  leadSourceId: z.string().trim().nullable().optional(),
   status: z.enum(CLIENT_STATUSES).optional(),
   manualTimezone: z.string().trim().optional().or(z.literal("")),
-  assignedUserId: z.string().trim().nullable().optional(),
-  demoAt: z.string().nullable().optional(), // ISO datetime (UTC)
   lostReason: z.string().trim().max(1000).optional().or(z.literal("")),
   // Financial manual overrides (only meaningful post-conversion)
   totalRevenue: z.number().nonnegative().optional(),
@@ -57,20 +42,26 @@ export const updateClientSchema = z.object({
   paymentDueDate: z.string().nullable().optional(),
 });
 
-export const followUpSchema = z.object({
+// Demo is always scheduled by the operator directly in IST.
+export const scheduleDemoSchema = z.object({
   localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
   localTime: z.string().regex(/^\d{2}:\d{2}$/, "Invalid time"),
   note: z.string().trim().max(2000).optional().or(z.literal("")),
-  assignedUserId: z.string().trim().optional().or(z.literal("")),
 });
 
-export const followUpUpdateSchema = z.object({
-  status: z.enum(["PENDING", "COMPLETED", "RESCHEDULED", "CANCELLED"]).optional(),
-  localDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  localTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
-  note: z.string().trim().max(2000).optional().or(z.literal("")),
-  assignedUserId: z.string().trim().nullable().optional(),
-});
+// The single daily action taken on a client in the follow-up list.
+export const followUpActionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("tomorrow"), note: z.string().trim().max(2000).optional().or(z.literal("")) }),
+  z.object({
+    action: z.literal("specific_date"),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date"),
+    note: z.string().trim().max(2000).optional().or(z.literal("")),
+  }),
+  z.object({
+    action: z.literal("lost"),
+    lostReason: z.string().trim().max(1000).optional().or(z.literal("")),
+  }),
+]);
 
 export const conversionSchema = z
   .object({
@@ -95,4 +86,8 @@ export const paymentSchema = z.object({
   reference: z.string().trim().max(200).optional().or(z.literal("")),
   notes: z.string().trim().max(1000).optional().or(z.literal("")),
   allowOverpayment: z.boolean().default(false),
+});
+
+export const leadSourceSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100),
 });

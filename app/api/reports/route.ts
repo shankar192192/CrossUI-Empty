@@ -15,8 +15,7 @@ export async function GET(req: NextRequest) {
   const dateFrom = sp.get("dateFrom");
   const dateTo = sp.get("dateTo");
   const country = sp.get("country");
-  const leadSource = sp.get("leadSource");
-  const assignedUserId = sp.get("assignedUserId");
+  const leadSourceId = sp.get("leadSourceId");
 
   const where: Prisma.ClientWhereInput = {};
   if (dateFrom || dateTo) {
@@ -26,8 +25,7 @@ export async function GET(req: NextRequest) {
     };
   }
   if (country) where.country = country;
-  if (leadSource) where.leadSource = leadSource as Prisma.EnumLeadSourceFilter["equals"];
-  if (assignedUserId) where.assignedUserId = assignedUserId;
+  if (leadSourceId) where.leadSourceId = leadSourceId;
 
   const clients = await prisma.client.findMany({
     where,
@@ -38,17 +36,15 @@ export async function GET(req: NextRequest) {
       convertedAt: true,
       country: true,
       countryName: true,
-      leadSource: true,
+      leadSource: { select: { name: true } },
       totalRevenue: true,
       totalCost: true,
       amountReceived: true,
       demoAt: true,
-      assignedUserId: true,
-      assignedUser: { select: { name: true } },
     },
   });
 
-  const followUpsCount = await prisma.followUp.count({
+  const followUpsCount = await prisma.followUpLog.count({
     where: { client: where },
   });
 
@@ -71,7 +67,7 @@ export async function GET(req: NextRequest) {
   // Breakdown by lead source
   const bySource: Record<string, { leads: number; converted: number; revenue: number }> = {};
   for (const c of clients) {
-    const key = c.leadSource;
+    const key = c.leadSource?.name ?? "Unassigned";
     bySource[key] ??= { leads: 0, converted: 0, revenue: 0 };
     bySource[key].leads++;
     if (c.status === "CONVERTED") {
@@ -104,18 +100,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Breakdown by salesperson
-  const bySalesperson: Record<string, { name: string; leads: number; converted: number; revenue: number }> = {};
-  for (const c of clients) {
-    const key = c.assignedUserId ?? "unassigned";
-    bySalesperson[key] ??= { name: c.assignedUser?.name ?? "Unassigned", leads: 0, converted: 0, revenue: 0 };
-    bySalesperson[key].leads++;
-    if (c.status === "CONVERTED") {
-      bySalesperson[key].converted++;
-      bySalesperson[key].revenue += Number(c.totalRevenue ?? 0);
-    }
-  }
-
   return NextResponse.json({
     summary: {
       leadsGenerated,
@@ -130,6 +114,5 @@ export async function GET(req: NextRequest) {
     bySource,
     byCountry,
     byMonth,
-    bySalesperson,
   });
 }

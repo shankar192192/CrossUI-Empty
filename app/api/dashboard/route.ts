@@ -1,11 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { serializeClient } from "@/lib/serialize";
 import { calculateProfit, calculatePendingPayment, determinePaymentStatus } from "@/lib/calculations";
-import { todayInTimezone } from "@/lib/followups";
+import { isDueToday } from "@/lib/followups";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     await requireSession();
   } catch {
@@ -13,6 +14,21 @@ export async function GET() {
   }
 
   const now = new Date();
+  const sp = req.nextUrl.searchParams;
+  const dateFrom = sp.get("dateFrom");
+  const dateTo = sp.get("dateTo");
+
+  // The date filter scopes the lead/revenue metrics and "Recent Leads";
+  // "Today's Follow-ups" is always the live, current-moment operational list.
+  const dateWhere: Prisma.ClientWhereInput =
+    dateFrom || dateTo
+      ? {
+          dateAdded: {
+            ...(dateFrom ? { gte: new Date(dateFrom) } : {}),
+            ...(dateTo ? { lte: new Date(dateTo + "T23:59:59") } : {}),
+          },
+        }
+      : {};
 
   const [
     totalLeads,
@@ -21,22 +37,30 @@ export async function GET() {
     followUpStatusCount,
     converted,
     lost,
-    dueFollowUps,
     convertedClients,
     recentLeads,
+    dueClients,
   ] = await Promise.all([
-    prisma.client.count(),
-    prisma.client.count({ where: { status: "NEW_LEAD" } }),
-    prisma.client.count({ where: { status: "DEMO_SCHEDULED" } }),
-    prisma.client.count({ where: { status: "FOLLOW_UP" } }),
-    prisma.client.count({ where: { status: "CONVERTED" } }),
-    prisma.client.count({ where: { status: "LOST" } }),
-    prisma.followUp.count({ where: { status: "PENDING", scheduledAt: { lte: now } } }),
-    prisma.client.findMany({ where: { status: "CONVERTED" }, select: { totalRevenue: true, totalCost: true, amountReceived: true, paymentDueDate: true } }),
+    prisma.client.count({ where: dateWhere }),
+    prisma.client.count({ where: { ...dateWhere, status: "NEW_LEAD" } }),
+    prisma.client.count({ where: { ...dateWhere, status: "DEMO_SCHEDULED" } }),
+    prisma.client.count({ where: { ...dateWhere, status: "FOLLOW_UP" } }),
+    prisma.client.count({ where: { ...dateWhere, status: "CONVERTED" } }),
+    prisma.client.count({ where: { ...dateWhere, status: "LOST" } }),
     prisma.client.findMany({
+      where: { ...dateWhere, status: "CONVERTED" },
+      select: { totalRevenue: true, totalCost: true, amountReceived: true, paymentDueDate: true },
+    }),
+    prisma.client.findMany({
+      where: dateWhere,
       orderBy: { dateAdded: "desc" },
       take: 10,
-      include: { followUps: { where: { status: "PENDING" }, orderBy: { scheduledAt: "asc" }, take: 1 } },
+      include: { leadSource: true },
+    }),
+    prisma.client.findMany({
+      where: { status: { in: ["NEW_LEAD", "FOLLOW_UP"] }, nextFollowUpAt: { not: null } },
+      orderBy: { nextFollowUpAt: "asc" },
+      include: { leadSource: true },
     }),
   ]);
 
@@ -59,20 +83,7 @@ export async function GET() {
     if (status === "OVERDUE") overdueCount++;
   }
 
-  const todaysFollowUps = await prisma.followUp.findMany({
-    where: { status: "PENDING" },
-    orderBy: { scheduledAt: "asc" },
-    include: {
-      client: true,
-      assignedUser: { select: { id: true, name: true } },
-    },
-  });
-
-  // "Due today" per client-local-calendar-day, not server-local-day.
-  const dueTodayList = todaysFollowUps.filter((f) => {
-    if (!f.client.timezone) return false;
-    return f.localDate === todayInTimezone(f.client.timezone, now);
-  });
+  const dueTodayList = dueClients.filter((c) => isDueToday(c.nextFollowUpAt));
 
   return NextResponse.json({
     metrics: {
@@ -81,7 +92,6 @@ export async function GET() {
       demoScheduled,
       followUpStatusCount,
       followUpsDueToday: dueTodayList.length,
-      followUpsDueNow: dueFollowUps,
       converted,
       lost,
       totalRevenue: Math.round(totalRevenue * 100) / 100,
@@ -90,10 +100,7 @@ export async function GET() {
       pendingPayments: Math.round(pendingPaymentsTotal * 100) / 100,
       overduePayments: overdueCount,
     },
-    todaysFollowUps: dueTodayList.map((f) => ({
-      ...f,
-      client: serializeClient(f.client)!,
-    })),
+    todaysFollowUps: dueTodayList.map((c) => serializeClient(c)!),
     recentLeads: recentLeads.map((c) => serializeClient(c)!),
   });
 }

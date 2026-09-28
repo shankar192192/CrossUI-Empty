@@ -4,20 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "./Modal";
 import { parsePhone } from "@/lib/phone";
 import { detectTimezoneForCountry, timezonesForCountry } from "@/lib/timezone";
-import { Loader2, CheckCircle2, AlertTriangle, Info } from "lucide-react";
-import type { Client } from "@/lib/types";
-
-const LEAD_SOURCES = [
-  ["WEBSITE", "Website"],
-  ["REFERRAL", "Referral"],
-  ["INSTAGRAM", "Instagram"],
-  ["FACEBOOK", "Facebook"],
-  ["GOOGLE_ADS", "Google Ads"],
-  ["WHATSAPP_INBOUND", "WhatsApp Inbound"],
-  ["WALK_IN", "Walk-in"],
-  ["PARTNER_SCHOOL", "Partner School"],
-  ["OTHER", "Other"],
-] as const;
+import { Loader2, CheckCircle2, AlertTriangle, Info, Plus } from "lucide-react";
+import type { Client, LeadSource } from "@/lib/types";
 
 interface Props {
   onClose: () => void;
@@ -33,23 +21,44 @@ export function ClientFormModal({ onClose, onSaved, client }: Props) {
   const [email, setEmail] = useState(client?.email ?? "");
   const [requirement, setRequirement] = useState(client?.requirement ?? "");
   const [notes, setNotes] = useState(client?.notes ?? "");
-  const [leadSource, setLeadSource] = useState(client?.leadSource ?? "OTHER");
+  const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
+  const [leadSourceId, setLeadSourceId] = useState(client?.leadSourceId ?? "");
+  const [addingSource, setAddingSource] = useState(false);
+  const [newSourceName, setNewSourceName] = useState("");
   const [manualTimezone, setManualTimezone] = useState(
     client?.timezoneSource === "MANUAL" ? client.timezone ?? "" : ""
   );
-  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
-  const [assignedUserId, setAssignedUserId] = useState(client?.assignedUserId ?? "");
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<{ id: string; name: string } | null>(null);
 
-  useEffect(() => {
-    fetch("/api/users")
+  function loadLeadSources() {
+    fetch("/api/lead-sources")
       .then((r) => r.json())
-      .then((d) => setUsers(d.users ?? []))
+      .then((d) => setLeadSources(d.leadSources ?? []))
       .catch(() => {});
+  }
+
+  useEffect(() => {
+    loadLeadSources();
   }, []);
+
+  async function addLeadSource() {
+    if (!newSourceName.trim()) return;
+    const res = await fetch("/api/lead-sources", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newSourceName.trim() }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      setLeadSources((prev) => [...prev, data.leadSource].sort((a, b) => a.name.localeCompare(b.name)));
+      setLeadSourceId(data.leadSource.id);
+      setNewSourceName("");
+      setAddingSource(false);
+    }
+  }
 
   const phonePreview = useMemo(() => {
     if (!phone.trim()) return null;
@@ -68,7 +77,6 @@ export function ClientFormModal({ onClose, onSaved, client }: Props) {
     return detection?.candidates ?? [];
   }, [detection, manualTimezone, phonePreview]);
 
-  const effectiveTimezone = manualTimezone || detection?.timezone || null;
   const needsManualSelection = !!phonePreview?.valid && !detection?.confident && !manualTimezone;
 
   async function submit(force = false) {
@@ -97,9 +105,8 @@ export function ClientFormModal({ onClose, onSaved, client }: Props) {
       email: email.trim() || undefined,
       requirement: requirement.trim() || undefined,
       notes: notes.trim() || undefined,
-      leadSource,
+      leadSourceId: leadSourceId || undefined,
       manualTimezone: manualTimezone || undefined,
-      assignedUserId: assignedUserId || undefined,
     };
 
     try {
@@ -169,13 +176,43 @@ export function ClientFormModal({ onClose, onSaved, client }: Props) {
           </div>
           <div>
             <label className="label">Lead source</label>
-            <select className="input" value={leadSource} onChange={(e) => setLeadSource(e.target.value as typeof leadSource)}>
-              {LEAD_SOURCES.map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </select>
+            {!addingSource ? (
+              <div className="flex gap-1.5">
+                <select className="input" value={leadSourceId} onChange={(e) => setLeadSourceId(e.target.value)}>
+                  <option value="">Select source…</option>
+                  {leadSources.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" onClick={() => setAddingSource(true)} className="btn-secondary px-2.5" title="Add new source">
+                  <Plus className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-1.5">
+                <input
+                  autoFocus
+                  className="input"
+                  placeholder="New source name"
+                  value={newSourceName}
+                  onChange={(e) => setNewSourceName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addLeadSource();
+                    }
+                  }}
+                />
+                <button type="button" onClick={addLeadSource} className="btn-secondary text-xs px-2.5">
+                  Add
+                </button>
+                <button type="button" onClick={() => setAddingSource(false)} className="btn-ghost text-xs px-2">
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -259,18 +296,6 @@ export function ClientFormModal({ onClose, onSaved, client }: Props) {
         <div>
           <label className="label">Notes</label>
           <textarea className="input" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </div>
-
-        <div>
-          <label className="label">Assigned salesperson</label>
-          <select className="input" value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)}>
-            <option value="">Unassigned</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

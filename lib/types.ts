@@ -1,31 +1,19 @@
 export type ClientStatus = "NEW_LEAD" | "DEMO_SCHEDULED" | "FOLLOW_UP" | "CONVERTED" | "LOST";
-export type LeadSource =
-  | "WEBSITE"
-  | "REFERRAL"
-  | "INSTAGRAM"
-  | "FACEBOOK"
-  | "GOOGLE_ADS"
-  | "WHATSAPP_INBOUND"
-  | "WALK_IN"
-  | "PARTNER_SCHOOL"
-  | "OTHER";
-export type FollowUpStatus = "PENDING" | "COMPLETED" | "RESCHEDULED" | "CANCELLED";
 export type PaymentStatus = "PENDING" | "PARTIALLY_PAID" | "PAID" | "OVERDUE";
+export type FollowUpOutcome = "FOLLOWED_UP_NEXT_DAY" | "FOLLOWED_UP_SPECIFIC_DATE" | "DEMO_COMPLETED" | "CONVERTED" | "LOST";
 
-export interface FollowUp {
+export interface LeadSource {
+  id: string;
+  name: string;
+}
+
+export interface FollowUpLog {
   id: string;
   clientId: string;
-  localDate: string;
-  localTime: string;
-  timezone: string;
-  scheduledAt: string;
+  outcome: FollowUpOutcome;
   note: string | null;
-  status: FollowUpStatus;
-  assignedUserId: string | null;
-  assignedUser?: { id: string; name: string } | null;
-  completedAt: string | null;
-  isDefaultNoon: boolean;
-  createdAt: string;
+  nextFollowUpAt: string | null;
+  occurredAt: string;
 }
 
 export interface Payment {
@@ -59,12 +47,13 @@ export interface Client {
   timezoneConfident: boolean;
   requirement: string | null;
   notes: string | null;
-  leadSource: LeadSource;
+  leadSourceId: string | null;
+  leadSource?: LeadSource | null;
   status: ClientStatus;
   dateAdded: string;
   demoAt: string | null;
-  assignedUserId: string | null;
-  assignedUser?: { id: string; name: string } | null;
+  nextFollowUpAt: string | null;
+  followUpPriority: boolean;
   convertedAt: string | null;
   productService: string | null;
   totalRevenue: number | null;
@@ -77,9 +66,9 @@ export interface Client {
   profit: number | null;
   pendingPayment: number | null;
   paymentStatus: PaymentStatus | null;
-  followUps?: FollowUp[];
   payments?: Payment[];
   activities?: Activity[];
+  followUpLogs?: FollowUpLog[];
 }
 
 export interface DashboardMetrics {
@@ -88,7 +77,6 @@ export interface DashboardMetrics {
   demoScheduled: number;
   followUpStatusCount: number;
   followUpsDueToday: number;
-  followUpsDueNow: number;
   converted: number;
   lost: number;
   totalRevenue: number;

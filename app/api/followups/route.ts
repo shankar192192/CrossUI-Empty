@@ -1,34 +1,28 @@
-import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { serializeClient } from "@/lib/serialize";
+import { isDueToday } from "@/lib/followups";
 
-export async function GET(req: NextRequest) {
+// The daily follow-up list: every client not Demo Scheduled / Converted /
+// Lost, whose next follow-up slot has arrived (today or earlier).
+export async function GET() {
   try {
     await requireSession();
   } catch {
     return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
   }
 
-  const sp = req.nextUrl.searchParams;
-  const status = sp.get("status") ?? "PENDING";
-  const assignedUserId = sp.get("assignedUserId");
-
-  const where: Prisma.FollowUpWhereInput = {};
-  if (status !== "ALL") where.status = status as Prisma.EnumFollowUpStatusFilter["equals"];
-  if (assignedUserId) where.assignedUserId = assignedUserId;
-
-  const followUps = await prisma.followUp.findMany({
-    where,
-    orderBy: { scheduledAt: "asc" },
-    include: {
-      client: true,
-      assignedUser: { select: { id: true, name: true } },
+  const clients = await prisma.client.findMany({
+    where: {
+      status: { in: ["NEW_LEAD", "FOLLOW_UP"] },
+      nextFollowUpAt: { not: null },
     },
+    orderBy: { nextFollowUpAt: "asc" },
+    include: { leadSource: true },
   });
 
-  return NextResponse.json({
-    followUps: followUps.map((f) => ({ ...f, client: serializeClient(f.client)! })),
-  });
+  const due = clients.filter((c) => isDueToday(c.nextFollowUpAt));
+
+  return NextResponse.json({ clients: due.map((c) => serializeClient(c)!) });
 }

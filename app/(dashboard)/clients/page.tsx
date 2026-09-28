@@ -6,8 +6,9 @@ import { Search, Plus, SlidersHorizontal } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocalClock } from "@/components/LocalClock";
 import { ClientFormModal } from "@/components/ClientFormModal";
+import { DateRangeFilter, type DateRange } from "@/components/DateRangeFilter";
 import { countryFlag, formatDate } from "@/lib/format";
-import type { Client } from "@/lib/types";
+import type { Client, LeadSource } from "@/lib/types";
 
 const STATUS_OPTIONS = ["NEW_LEAD", "DEMO_SCHEDULED", "FOLLOW_UP", "CONVERTED", "LOST"];
 const STATUS_LABEL: Record<string, string> = {
@@ -23,21 +24,33 @@ export default function ClientsPage() {
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
-  const [leadSource, setLeadSource] = useState("");
+  const [leadSourceId, setLeadSourceId] = useState("");
+  const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [followUpDue, setFollowUpDue] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [sort, setSort] = useState("newest");
   const [showFilters, setShowFilters] = useState(false);
   const [showAddClient, setShowAddClient] = useState(false);
-  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/lead-sources")
+      .then((r) => r.json())
+      .then((d) => setLeadSources(d.leadSources ?? []))
+      .catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (status) params.set("status", status);
-    if (leadSource) params.set("leadSource", leadSource);
+    if (leadSourceId) params.set("leadSourceId", leadSourceId);
     if (followUpDue) params.set("followUpDue", "true");
+    if (dateRange) {
+      params.set("dateFrom", dateRange.from);
+      params.set("dateTo", dateRange.to);
+    }
     params.set("sort", sort);
     params.set("pageSize", "50");
 
@@ -46,7 +59,7 @@ export default function ClientsPage() {
     setClients(data.clients ?? []);
     setTotal(data.total ?? 0);
     setLoading(false);
-  }, [q, status, leadSource, followUpDue, sort]);
+  }, [q, status, leadSourceId, followUpDue, dateRange, sort]);
 
   useEffect(() => {
     const id = setTimeout(load, 250);
@@ -65,14 +78,17 @@ export default function ClientsPage() {
 
   return (
     <div className="p-6 md:p-8 max-w-[1400px] mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900">All Clients</h1>
           <p className="text-sm text-slate-500 mt-1">{total} total</p>
         </div>
-        <button onClick={() => setShowAddClient(true)} className="btn-primary">
-          <Plus className="w-4 h-4" /> Add Client
-        </button>
+        <div className="flex items-center gap-3">
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+          <button onClick={() => setShowAddClient(true)} className="btn-primary">
+            <Plus className="w-4 h-4" /> Add Client
+          </button>
+        </div>
       </div>
 
       <div className="card p-4 space-y-3">
@@ -110,15 +126,13 @@ export default function ClientsPage() {
                 </option>
               ))}
             </select>
-            <select className="input w-auto" value={leadSource} onChange={(e) => setLeadSource(e.target.value)}>
+            <select className="input w-auto" value={leadSourceId} onChange={(e) => setLeadSourceId(e.target.value)}>
               <option value="">All lead sources</option>
-              {["WEBSITE", "REFERRAL", "INSTAGRAM", "FACEBOOK", "GOOGLE_ADS", "WHATSAPP_INBOUND", "WALK_IN", "PARTNER_SCHOOL", "OTHER"].map(
-                (s) => (
-                  <option key={s} value={s}>
-                    {s.replace("_", " ")}
-                  </option>
-                )
-              )}
+              {leadSources.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
             </select>
             <label className="flex items-center gap-2 text-sm text-slate-600 px-2">
               <input type="checkbox" checked={followUpDue} onChange={(e) => setFollowUpDue(e.target.checked)} />
@@ -200,16 +214,6 @@ export default function ClientsPage() {
           onClose={() => setShowAddClient(false)}
           onSaved={() => {
             setShowAddClient(false);
-            load();
-          }}
-        />
-      )}
-      {editingClient && (
-        <ClientFormModal
-          client={editingClient}
-          onClose={() => setEditingClient(null)}
-          onSaved={() => {
-            setEditingClient(null);
             load();
           }}
         />

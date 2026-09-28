@@ -15,6 +15,7 @@ import {
   Legend,
 } from "recharts";
 import { formatCurrency } from "@/lib/format";
+import { DateRangeFilter, type DateRange } from "@/components/DateRangeFilter";
 
 const COLORS = ["#2563eb", "#7c3aed", "#059669", "#d97706", "#dc2626", "#0891b2", "#db2777", "#65a30d"];
 
@@ -36,16 +37,17 @@ interface ReportData {
 
 export default function ReportsPage() {
   const [data, setData] = useState<ReportData | null>(null);
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
 
   const load = useCallback(async () => {
     const params = new URLSearchParams();
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (dateRange) {
+      params.set("dateFrom", dateRange.from);
+      params.set("dateTo", dateRange.to);
+    }
     const res = await fetch(`/api/reports?${params.toString()}`);
     setData(await res.json());
-  }, [dateFrom, dateTo]);
+  }, [dateRange]);
 
   useEffect(() => {
     load();
@@ -66,16 +68,7 @@ export default function ReportsPage() {
           <h1 className="text-2xl font-semibold text-slate-900">Reports</h1>
           <p className="text-sm text-slate-500 mt-1">Pipeline and revenue performance</p>
         </div>
-        <div className="flex gap-2">
-          <div>
-            <label className="label">From</label>
-            <input type="date" className="input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">To</label>
-            <input type="date" className="input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          </div>
-        </div>
+        <DateRangeFilter value={dateRange} onChange={setDateRange} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

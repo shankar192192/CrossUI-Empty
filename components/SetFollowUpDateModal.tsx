@@ -3,34 +3,31 @@
 import { useState } from "react";
 import { Modal } from "./Modal";
 import { Loader2 } from "lucide-react";
-import type { FollowUp } from "@/lib/types";
+import type { Client } from "@/lib/types";
 
-export function RescheduleModal({
-  followUp,
-  clientTimezone,
+export function SetFollowUpDateModal({
+  client,
   onClose,
-  onRescheduled,
+  onDone,
 }: {
-  followUp: FollowUp;
-  clientTimezone: string;
+  client: Client;
   onClose: () => void;
-  onRescheduled: (followUp: FollowUp) => void;
+  onDone: (client: Client) => void;
 }) {
-  const [localDate, setLocalDate] = useState(followUp.localDate);
-  const [localTime, setLocalTime] = useState(followUp.localTime);
-  const [note, setNote] = useState(followUp.note ?? "");
-  const [error, setError] = useState<string | null>(null);
+  const [date, setDate] = useState(new Date(Date.now() + 86_400_000).toISOString().slice(0, 10));
+  const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setSubmitting(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/followups/${followUp.id}`, {
-        method: "PATCH",
+      const res = await fetch(`/api/clients/${client.id}/followup-action`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localDate, localTime, note: note || undefined }),
+        body: JSON.stringify({ action: "specific_date", date, note: note || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -38,7 +35,7 @@ export function RescheduleModal({
         setSubmitting(false);
         return;
       }
-      onRescheduled(data.followUp);
+      onDone(data.client);
     } catch {
       setError("Network error — please try again");
       setSubmitting(false);
@@ -46,23 +43,25 @@ export function RescheduleModal({
   }
 
   return (
-    <Modal title="Reschedule Follow-up" onClose={onClose}>
+    <Modal title={`Set Follow-up Date — ${client.name}`} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2">{error}</div>
         )}
         <p className="text-xs text-slate-500">
-          Time is interpreted in the client&apos;s local timezone: <strong>{clientTimezone}</strong>
+          They won&apos;t appear in your daily follow-up list again until this date. Call slot is always 1:00 PM in
+          their local time{client.timezone ? ` (${client.timezone})` : " (IST, until their timezone is confirmed)"}.
         </p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="label">Date</label>
-            <input type="date" required className="input" value={localDate} onChange={(e) => setLocalDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="label">Time (client&apos;s local time)</label>
-            <input type="time" required className="input" value={localTime} onChange={(e) => setLocalTime(e.target.value)} />
-          </div>
+        <div>
+          <label className="label">Follow-up date</label>
+          <input
+            type="date"
+            required
+            min={new Date().toISOString().slice(0, 10)}
+            className="input"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+          />
         </div>
         <div>
           <label className="label">Note</label>
@@ -74,7 +73,7 @@ export function RescheduleModal({
           </button>
           <button type="submit" disabled={submitting} className="btn-primary">
             {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-            Reschedule
+            Set date
           </button>
         </div>
       </form>

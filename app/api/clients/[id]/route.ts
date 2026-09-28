@@ -6,7 +6,7 @@ import { updateClientSchema } from "@/lib/validation";
 import { resolveClientIdentity } from "@/lib/clientResolution";
 import { logActivity } from "@/lib/activityLog";
 import { serializeClient } from "@/lib/serialize";
-import { computeDefaultNoonFollowUp } from "@/lib/followups";
+import { computeNextDayFollowUp } from "@/lib/followups";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -18,10 +18,10 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const client = await prisma.client.findUnique({
     where: { id: params.id },
     include: {
-      followUps: { orderBy: { scheduledAt: "desc" }, include: { assignedUser: { select: { id: true, name: true } } } },
+      leadSource: true,
       payments: { orderBy: { paidAt: "desc" } },
+      followUpLogs: { orderBy: { occurredAt: "desc" } },
       activities: { orderBy: { occurredAt: "desc" }, include: { actor: { select: { id: true, name: true } } } },
-      assignedUser: { select: { id: true, name: true } },
     },
   });
 
@@ -102,17 +102,12 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (data.notes) activities.push({ type: "NOTE", message: data.notes });
   }
 
-  if (data.leadSource !== undefined) update.leadSource = data.leadSource;
-  if (data.assignedUserId !== undefined) update.assignedUserId = data.assignedUserId || null;
-  if (data.demoAt !== undefined) {
-    update.demoAt = data.demoAt ? new Date(data.demoAt) : null;
-    if (data.demoAt) activities.push({ type: "DEMO_SCHEDULED", message: `Demo scheduled for ${new Date(data.demoAt).toISOString()}` });
-  }
+  if (data.leadSourceId !== undefined) update.leadSourceId = data.leadSourceId || null;
   if (data.totalRevenue !== undefined) update.totalRevenue = data.totalRevenue;
   if (data.totalCost !== undefined) update.totalCost = data.totalCost;
   if (data.paymentDueDate !== undefined) update.paymentDueDate = data.paymentDueDate ? new Date(data.paymentDueDate) : null;
 
-  let autoFollowUp: Awaited<ReturnType<typeof computeDefaultNoonFollowUp>> | null = null;
+  let autoFollowUpAt: Date | null = null;
 
   if (data.status !== undefined && data.status !== existing.status) {
     update.status = data.status;
@@ -127,16 +122,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       update.lostReason = data.lostReason || null;
     }
 
-    if (data.status === "FOLLOW_UP") {
+    if (data.status === "FOLLOW_UP" && !existing.nextFollowUpAt) {
       const tz = (update.timezone as string | null | undefined) ?? existing.timezone;
-      if (tz) {
-        const existingPending = await prisma.followUp.findFirst({
-          where: { clientId: existing.id, status: "PENDING" },
-        });
-        if (!existingPending) {
-          autoFollowUp = computeDefaultNoonFollowUp(tz);
-        }
-      }
+      autoFollowUpAt = computeNextDayFollowUp(tz);
+      update.nextFollowUpAt = autoFollowUpAt;
     }
   }
 
@@ -151,22 +140,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
       await logActivity(tx, { clientId: updated.id, type: a.type, message: a.message, actorId: session.userId, metadata: a.metadata });
     }
 
-    if (autoFollowUp) {
-      await tx.followUp.create({
-        data: {
-          clientId: updated.id,
-          localDate: autoFollowUp.localDate,
-          localTime: autoFollowUp.localTime,
-          timezone: updated.timezone!,
-          scheduledAt: autoFollowUp.scheduledAt,
-          isDefaultNoon: true,
-          status: "PENDING",
-        },
-      });
+    if (autoFollowUpAt) {
       await logActivity(tx, {
         clientId: updated.id,
         type: "FOLLOW_UP_SCHEDULED",
-        message: `Follow-up auto-scheduled for 12:00 PM (${updated.timezone}) on ${autoFollowUp.localDate}`,
+        message: `Follow-up scheduled for tomorrow`,
         actorId: session.userId,
       });
     }
@@ -177,10 +155,10 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const full = await prisma.client.findUnique({
     where: { id: client.id },
     include: {
-      followUps: { orderBy: { scheduledAt: "desc" } },
+      leadSource: true,
       payments: { orderBy: { paidAt: "desc" } },
+      followUpLogs: { orderBy: { occurredAt: "desc" } },
       activities: { orderBy: { occurredAt: "desc" } },
-      assignedUser: { select: { id: true, name: true } },
     },
   });
 

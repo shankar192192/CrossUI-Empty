@@ -1,107 +1,154 @@
 import { describe, it, expect } from "vitest";
 import {
   computeScheduledAt,
-  computeDefaultNoonFollowUp,
-  followUpUrgency,
+  computeNextDayFollowUp,
+  computeFollowUpForDate,
+  isDueToday,
+  daysOverdue,
   todayInTimezone,
+  formatInIST,
+  OPERATOR_TIMEZONE,
 } from "../followups";
 
 describe("computeScheduledAt", () => {
-  it("resolves different UTC instants for the same local 12:00 PM in different timezones", () => {
-    // New York and Dubai clients both scheduled for "12:00 PM their time" on
+  it("resolves different UTC instants for the same local 1:00 PM call slot in different timezones", () => {
+    // New York and Dubai clients both scheduled for "1:00 PM their time" on
     // the same calendar date must NOT collapse to the same UTC instant.
-    const nyScheduled = computeScheduledAt("2026-01-15", "12:00", "America/New_York");
-    const dubaiScheduled = computeScheduledAt("2026-01-15", "12:00", "Asia/Dubai");
+    const nyScheduled = computeScheduledAt("2026-01-15", "13:00", "America/New_York");
+    const dubaiScheduled = computeScheduledAt("2026-01-15", "13:00", "Asia/Dubai");
 
     expect(nyScheduled.getTime()).not.toBe(dubaiScheduled.getTime());
 
-    // In January, New York is EST (UTC-5) -> 12:00 local = 17:00 UTC
-    expect(nyScheduled.toISOString()).toBe("2026-01-15T17:00:00.000Z");
-    // Dubai is UTC+4 year-round -> 12:00 local = 08:00 UTC
-    expect(dubaiScheduled.toISOString()).toBe("2026-01-15T08:00:00.000Z");
+    // In January, New York is EST (UTC-5) -> 13:00 local = 18:00 UTC
+    expect(nyScheduled.toISOString()).toBe("2026-01-15T18:00:00.000Z");
+    // Dubai is UTC+4 year-round -> 13:00 local = 09:00 UTC
+    expect(dubaiScheduled.toISOString()).toBe("2026-01-15T09:00:00.000Z");
   });
 
   it("produces different UTC instants for India vs UK follow-ups", () => {
-    const indiaScheduled = computeScheduledAt("2026-06-01", "12:00", "Asia/Kolkata"); // UTC+5:30
-    const ukScheduled = computeScheduledAt("2026-06-01", "12:00", "Europe/London"); // BST UTC+1 in June
+    const indiaScheduled = computeScheduledAt("2026-06-01", "13:00", "Asia/Kolkata"); // UTC+5:30
+    const ukScheduled = computeScheduledAt("2026-06-01", "13:00", "Europe/London"); // BST UTC+1 in June
 
-    expect(indiaScheduled.toISOString()).toBe("2026-06-01T06:30:00.000Z");
-    expect(ukScheduled.toISOString()).toBe("2026-06-01T11:00:00.000Z");
+    expect(indiaScheduled.toISOString()).toBe("2026-06-01T07:30:00.000Z");
+    expect(ukScheduled.toISOString()).toBe("2026-06-01T12:00:00.000Z");
     expect(indiaScheduled.getTime()).not.toBe(ukScheduled.getTime());
   });
 
   it("handles the daylight-saving transition for America/New_York (EST -> EDT)", () => {
-    // Before DST starts (second Sunday of March 2026 = Mar 8): EST, UTC-5
-    const beforeDst = computeScheduledAt("2026-03-01", "12:00", "America/New_York");
-    expect(beforeDst.toISOString()).toBe("2026-03-01T17:00:00.000Z");
+    const beforeDst = computeScheduledAt("2026-03-01", "13:00", "America/New_York");
+    expect(beforeDst.toISOString()).toBe("2026-03-01T18:00:00.000Z");
 
-    // After DST starts: EDT, UTC-4 — the same local wall-clock time now maps
-    // to a different UTC hour, proving DST is respected per calendar date.
-    const afterDst = computeScheduledAt("2026-03-15", "12:00", "America/New_York");
-    expect(afterDst.toISOString()).toBe("2026-03-15T16:00:00.000Z");
+    const afterDst = computeScheduledAt("2026-03-15", "13:00", "America/New_York");
+    expect(afterDst.toISOString()).toBe("2026-03-15T17:00:00.000Z");
   });
 
   it("handles the daylight-saving transition for Australia (opposite hemisphere)", () => {
-    // Sydney observes DST Oct-Apr (opposite of northern hemisphere).
-    const summerAEDT = computeScheduledAt("2026-01-15", "12:00", "Australia/Sydney"); // AEDT UTC+11
-    const winterAEST = computeScheduledAt("2026-07-15", "12:00", "Australia/Sydney"); // AEST UTC+10
+    const summerAEDT = computeScheduledAt("2026-01-15", "13:00", "Australia/Sydney"); // AEDT UTC+11
+    const winterAEST = computeScheduledAt("2026-07-15", "13:00", "Australia/Sydney"); // AEST UTC+10
 
-    expect(summerAEDT.toISOString()).toBe("2026-01-15T01:00:00.000Z");
-    expect(winterAEST.toISOString()).toBe("2026-07-15T02:00:00.000Z");
+    expect(summerAEDT.toISOString()).toBe("2026-01-15T02:00:00.000Z");
+    expect(winterAEST.toISOString()).toBe("2026-07-15T03:00:00.000Z");
   });
 });
 
-describe("computeDefaultNoonFollowUp", () => {
-  it("schedules today at noon local time when noon hasn't passed yet", () => {
-    // 9:00 AM in India — local noon is still ahead today.
+describe("computeNextDayFollowUp", () => {
+  it("schedules 1PM tomorrow in the client's own timezone, relative to that timezone's current date", () => {
+    // 11:00 AM EDT on May 10 in New York (same calendar date in both IST and NY at this instant).
+    const now = new Date("2026-05-10T15:00:00.000Z");
+    const result = computeNextDayFollowUp("America/New_York", now);
+    // Tomorrow (May 11) 13:00 America/New_York in May = EDT (UTC-4) -> 17:00 UTC
+    expect(result.toISOString()).toBe("2026-05-11T17:00:00.000Z");
+  });
+
+  it("computes 'tomorrow' relative to the CLIENT's own current calendar date, not the operator's", () => {
+    // 9:00 AM IST on May 10 is still 11:30 PM on May 9 in New York (EDT, UTC-4) —
+    // so the client's own "tomorrow" is May 10, even though it's already May 10 in IST.
     const now = computeScheduledAt("2026-05-10", "09:00", "Asia/Kolkata");
-    const result = computeDefaultNoonFollowUp("Asia/Kolkata", now);
-    expect(result.localDate).toBe("2026-05-10");
-    expect(result.scheduledAt.getTime()).toBeGreaterThan(now.getTime());
+    const result = computeNextDayFollowUp("America/New_York", now);
+    expect(result.toISOString()).toBe("2026-05-10T17:00:00.000Z");
   });
 
-  it("rolls forward to tomorrow when local noon has already passed today", () => {
-    // 3:00 PM in India — local noon already happened, so default should be tomorrow.
-    const now = computeScheduledAt("2026-05-10", "15:00", "Asia/Kolkata");
-    const result = computeDefaultNoonFollowUp("Asia/Kolkata", now);
-    expect(result.localDate).toBe("2026-05-11");
-    expect(result.scheduledAt.getTime()).toBeGreaterThan(now.getTime());
+  it("falls back to IST when the client's timezone is not yet confirmed", () => {
+    const now = computeScheduledAt("2026-05-10", "09:00", OPERATOR_TIMEZONE);
+    const result = computeNextDayFollowUp(null, now);
+    const expected = computeScheduledAt("2026-05-11", "13:00", OPERATOR_TIMEZONE);
+    expect(result.toISOString()).toBe(expected.toISOString());
+  });
+
+  it("rolls the calendar date forward correctly even right at a day boundary", () => {
+    // 11:59 PM IST on May 10 -> "tomorrow" must be May 11, not May 10 again.
+    const now = computeScheduledAt("2026-05-10", "23:59", OPERATOR_TIMEZONE);
+    const result = computeNextDayFollowUp(OPERATOR_TIMEZONE, now);
+    expect(todayInTimezone(OPERATOR_TIMEZONE, result)).toBe("2026-05-11");
   });
 });
 
-describe("followUpUrgency", () => {
-  const now = new Date("2026-05-10T12:00:00.000Z");
+describe("computeFollowUpForDate", () => {
+  it("always uses the 1:00 PM local slot for a specific chosen date", () => {
+    const result = computeFollowUpForDate("2026-06-20", "Asia/Kolkata");
+    expect(result.toISOString()).toBe(computeScheduledAt("2026-06-20", "13:00", "Asia/Kolkata").toISOString());
+  });
+});
 
-  it("is 'scheduled' when far in the future", () => {
-    const future = new Date(now.getTime() + 5 * 60 * 60 * 1000);
-    expect(followUpUrgency("PENDING", future, now)).toBe("scheduled");
+describe("isDueToday", () => {
+  it("is true once the slot has arrived", () => {
+    const now = new Date("2026-05-10T12:00:00.000Z");
+    const slot = new Date("2026-05-10T09:00:00.000Z");
+    expect(isDueToday(slot, now)).toBe(true);
   });
 
-  it("is 'due_soon' within the 2-hour window", () => {
-    const soon = new Date(now.getTime() + 60 * 60 * 1000);
-    expect(followUpUrgency("PENDING", soon, now)).toBe("due_soon");
+  it("is true for anything overdue from a previous day", () => {
+    const now = new Date("2026-05-10T12:00:00.000Z");
+    const slot = new Date("2026-05-05T09:00:00.000Z");
+    expect(isDueToday(slot, now)).toBe(true);
   });
 
-  it("is 'due' right at or just past the scheduled time", () => {
-    expect(followUpUrgency("PENDING", now, now)).toBe("due");
+  it("is true for a slot scheduled later THIS SAME day (e.g. a US client's evening-IST call slot)", () => {
+    // This is the core "call list for the whole day" behavior: a client
+    // whose 1PM-their-time slot lands at 10:30 PM IST still belongs in
+    // today's list, not tomorrow's, even before that time has arrived.
+    const now = computeScheduledAt("2026-05-10", "09:00", OPERATOR_TIMEZONE);
+    const laterToday = computeScheduledAt("2026-05-10", "22:30", OPERATOR_TIMEZONE);
+    expect(isDueToday(laterToday, now)).toBe(true);
   });
 
-  it("is 'overdue' more than 3 hours past scheduled time", () => {
-    const late = new Date(now.getTime() - 4 * 60 * 60 * 1000);
-    expect(followUpUrgency("PENDING", late, now)).toBe("overdue");
+  it("is false for a slot scheduled on a future day", () => {
+    const now = computeScheduledAt("2026-05-10", "09:00", OPERATOR_TIMEZONE);
+    const tomorrow = computeScheduledAt("2026-05-11", "13:00", OPERATOR_TIMEZONE);
+    expect(isDueToday(tomorrow, now)).toBe(false);
   });
 
-  it("is 'resolved' for a completed follow-up regardless of time", () => {
-    const late = new Date(now.getTime() - 100 * 60 * 60 * 1000);
-    expect(followUpUrgency("COMPLETED", late, now)).toBe("resolved");
+  it("is false when there is no follow-up scheduled", () => {
+    expect(isDueToday(null)).toBe(false);
+  });
+});
+
+describe("daysOverdue", () => {
+  it("is 0 for a follow-up due today", () => {
+    const now = computeScheduledAt("2026-05-10", "18:00", OPERATOR_TIMEZONE);
+    const dueToday = computeScheduledAt("2026-05-10", "13:00", OPERATOR_TIMEZONE);
+    expect(daysOverdue(dueToday, now)).toBe(0);
+  });
+
+  it("counts whole IST calendar days late", () => {
+    const now = computeScheduledAt("2026-05-10", "18:00", OPERATOR_TIMEZONE);
+    const threeDaysAgo = computeScheduledAt("2026-05-07", "13:00", OPERATOR_TIMEZONE);
+    expect(daysOverdue(threeDaysAgo, now)).toBe(3);
   });
 });
 
 describe("todayInTimezone", () => {
   it("returns a different calendar date across the date line at the same instant", () => {
-    // 23:30 UTC on 2026-05-10 is already 2026-05-11 in India (UTC+5:30).
     const instant = new Date("2026-05-10T23:30:00.000Z");
     expect(todayInTimezone("UTC", instant)).toBe("2026-05-10");
     expect(todayInTimezone("Asia/Kolkata", instant)).toBe("2026-05-11");
+  });
+});
+
+describe("formatInIST", () => {
+  it("converts a US client's own 1PM call slot into the operator's IST wall-clock time", () => {
+    // 1:00 PM EDT (America/New_York, summer) = 10:30 PM IST the same day.
+    const slot = computeScheduledAt("2026-07-01", "13:00", "America/New_York");
+    expect(formatInIST(slot)).toBe("10:30 PM IST");
   });
 });

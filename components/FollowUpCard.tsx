@@ -2,50 +2,57 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { MessageCircle, Mail, CheckCircle2, CalendarClock, BadgeCheck, Eye, Loader2 } from "lucide-react";
+import { MessageCircle, Mail, CheckCircle2, CalendarClock, BadgeCheck, Eye, Loader2, Flame } from "lucide-react";
 import { LocalClock } from "./LocalClock";
-import { UrgencyBadge } from "./StatusBadge";
+import { StatusBadge } from "./StatusBadge";
 import { countryFlag } from "@/lib/format";
-import { followUpUrgency } from "@/lib/followups";
-import { RescheduleModal } from "./RescheduleModal";
+import { formatInIST, daysOverdue } from "@/lib/followups";
+import { SetFollowUpDateModal } from "./SetFollowUpDateModal";
+import { LostReasonModal } from "./LostReasonModal";
 import { ConvertModal } from "./ConvertModal";
-import type { Client, FollowUp } from "@/lib/types";
+import type { Client } from "@/lib/types";
 
-export function FollowUpCard({
-  followUp,
-  onChanged,
-}: {
-  followUp: FollowUp & { client: Client };
-  onChanged: () => void;
-}) {
+export function FollowUpCard({ client, onChanged }: { client: Client; onChanged: (client?: Client) => void }) {
   const [busy, setBusy] = useState(false);
-  const [showReschedule, setShowReschedule] = useState(false);
+  const [showSetDate, setShowSetDate] = useState(false);
+  const [showLost, setShowLost] = useState(false);
   const [showConvert, setShowConvert] = useState(false);
-  const client = followUp.client;
 
-  const urgency = followUpUrgency(followUp.status, new Date(followUp.scheduledAt));
+  const nextFollowUpAt = client.nextFollowUpAt ? new Date(client.nextFollowUpAt) : null;
+  const overdue = nextFollowUpAt ? daysOverdue(nextFollowUpAt) : 0;
 
-  async function markFollowedUp() {
+  async function markDoneTomorrow() {
     setBusy(true);
-    await fetch(`/api/followups/${followUp.id}`, {
-      method: "PATCH",
+    const res = await fetch(`/api/clients/${client.id}/followup-action`, {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "COMPLETED" }),
+      body: JSON.stringify({ action: "tomorrow" }),
     });
+    const data = await res.json();
     setBusy(false);
-    onChanged();
+    if (res.ok) onChanged(data.client);
   }
 
   return (
     <div className="card p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg leading-none">{countryFlag(client.country)}</span>
             <Link href={`/clients/${client.id}`} className="font-semibold text-slate-900 hover:text-brand-600 truncate">
               {client.name}
             </Link>
-            <UrgencyBadge urgency={urgency} />
+            <StatusBadge status={client.status} />
+            {client.followUpPriority && (
+              <span className="badge bg-orange-50 text-orange-700">
+                <Flame className="w-3 h-3" /> Priority
+              </span>
+            )}
+            {overdue > 0 && (
+              <span className="badge bg-red-50 text-red-700">
+                {overdue} day{overdue > 1 ? "s" : ""} overdue
+              </span>
+            )}
           </div>
           <p className="text-sm text-slate-500 mt-0.5 truncate">{client.requirement ?? "No requirement noted"}</p>
 
@@ -68,58 +75,56 @@ export function FollowUpCard({
           <p className="text-lg font-semibold text-slate-900">
             <LocalClock timezone={client.timezone} />
           </p>
-          <p className="text-xs text-slate-400">Follow-up: {followUp.localTime}</p>
-          {followUp.assignedUser && (
-            <p className="text-xs text-slate-400">Assigned: {followUp.assignedUser.name}</p>
-          )}
+          {nextFollowUpAt && <p className="text-xs font-medium text-brand-600">Call at {formatInIST(nextFollowUpAt)}</p>}
         </div>
       </div>
 
-      {followUp.note && (
-        <p className="mt-3 text-sm text-slate-600 bg-slate-50 rounded-lg px-3 py-2">{followUp.note}</p>
-      )}
-
       <div className="flex flex-wrap gap-2 mt-3">
-        {followUp.status === "PENDING" && (
-          <>
-            <button onClick={markFollowedUp} disabled={busy} className="btn-secondary text-xs py-1.5">
-              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-              Mark Followed Up
-            </button>
-            <button onClick={() => setShowReschedule(true)} className="btn-secondary text-xs py-1.5">
-              <CalendarClock className="w-3.5 h-3.5" /> Reschedule
-            </button>
-            {client.status !== "CONVERTED" && (
-              <button onClick={() => setShowConvert(true)} className="btn-secondary text-xs py-1.5">
-                <BadgeCheck className="w-3.5 h-3.5" /> Convert
-              </button>
-            )}
-          </>
-        )}
+        <button onClick={markDoneTomorrow} disabled={busy} className="btn-secondary text-xs py-1.5">
+          {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+          Followed Up — Tomorrow
+        </button>
+        <button onClick={() => setShowSetDate(true)} className="btn-secondary text-xs py-1.5">
+          <CalendarClock className="w-3.5 h-3.5" /> Set Date
+        </button>
+        <button onClick={() => setShowConvert(true)} className="btn-secondary text-xs py-1.5">
+          <BadgeCheck className="w-3.5 h-3.5" /> Convert
+        </button>
+        <button onClick={() => setShowLost(true)} className="btn-ghost text-xs py-1.5 text-red-500">
+          Mark Lost
+        </button>
         <Link href={`/clients/${client.id}`} className="btn-ghost text-xs py-1.5">
           <Eye className="w-3.5 h-3.5" /> View Client
         </Link>
       </div>
 
-      {showReschedule && client.timezone && (
-        <RescheduleModal
-          followUp={followUp}
-          clientTimezone={client.timezone}
-          onClose={() => setShowReschedule(false)}
-          onRescheduled={() => {
-            setShowReschedule(false);
-            onChanged();
+      {showSetDate && (
+        <SetFollowUpDateModal
+          client={client}
+          onClose={() => setShowSetDate(false)}
+          onDone={(c) => {
+            setShowSetDate(false);
+            onChanged(c);
           }}
         />
       )}
-
+      {showLost && (
+        <LostReasonModal
+          client={client}
+          onClose={() => setShowLost(false)}
+          onDone={(c) => {
+            setShowLost(false);
+            onChanged(c);
+          }}
+        />
+      )}
       {showConvert && (
         <ConvertModal
           client={client}
           onClose={() => setShowConvert(false)}
-          onConverted={() => {
+          onConverted={(c) => {
             setShowConvert(false);
-            onChanged();
+            onChanged(c);
           }}
         />
       )}
