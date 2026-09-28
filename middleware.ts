@@ -5,6 +5,12 @@ const SESSION_COOKIE = "prepseven_session";
 
 const PUBLIC_PATHS = ["/login", "/api/auth/login"];
 
+// PWA assets the browser fetches on its own (registering the service
+// worker, reading the manifest, showing the offline fallback) — these must
+// stay reachable regardless of auth state, or the service worker itself
+// fails to install and the app is never installable.
+const PUBLIC_PREFIXES = ["/icons/", "/manifest.json", "/sw.js", "/offline.html"];
+
 function getSecretKey() {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET environment variable is not set");
@@ -16,6 +22,7 @@ export async function middleware(req: NextRequest) {
 
   if (
     PUBLIC_PATHS.some((p) => pathname === p) ||
+    PUBLIC_PREFIXES.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
   ) {
