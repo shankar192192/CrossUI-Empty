@@ -218,6 +218,9 @@ export default function ClientDetailPage() {
                         {f.localDate} at {f.localTime} ({f.timezone})
                       </p>
                       {f.note && <p className="text-xs text-slate-500 mt-0.5">{f.note}</p>}
+                      {f.assignedUser && (
+                        <p className="text-xs text-slate-400 mt-0.5">Assigned to {f.assignedUser.name}</p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {f.status === "PENDING" ? (

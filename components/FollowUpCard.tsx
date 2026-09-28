@@ -69,6 +69,9 @@ export function FollowUpCard({
             <LocalClock timezone={client.timezone} />
           </p>
           <p className="text-xs text-slate-400">Follow-up: {followUp.localTime}</p>
+          {followUp.assignedUser && (
+            <p className="text-xs text-slate-400">Assigned: {followUp.assignedUser.name}</p>
+          )}
         </div>
       </div>
 

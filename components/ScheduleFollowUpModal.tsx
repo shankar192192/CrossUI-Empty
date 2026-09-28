@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "./Modal";
 import { Loader2 } from "lucide-react";
 import type { Client, FollowUp } from "@/lib/types";
@@ -17,8 +17,17 @@ export function ScheduleFollowUpModal({
   const [localDate, setLocalDate] = useState(new Date().toISOString().slice(0, 10));
   const [localTime, setLocalTime] = useState("12:00");
   const [note, setNote] = useState("");
+  const [assignedUserId, setAssignedUserId] = useState(client.assignedUserId ?? "");
+  const [users, setUsers] = useState<{ id: string; name: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/users")
+      .then((r) => r.json())
+      .then((d) => setUsers(d.users ?? []))
+      .catch(() => {});
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -28,7 +37,7 @@ export function ScheduleFollowUpModal({
       const res = await fetch(`/api/clients/${client.id}/followups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ localDate, localTime, note: note || undefined }),
+        body: JSON.stringify({ localDate, localTime, note: note || undefined, assignedUserId: assignedUserId || undefined }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -72,6 +81,17 @@ export function ScheduleFollowUpModal({
             <label className="label">Time (client&apos;s local time)</label>
             <input type="time" required className="input" value={localTime} onChange={(e) => setLocalTime(e.target.value)} />
           </div>
+        </div>
+        <div>
+          <label className="label">Assigned person</label>
+          <select className="input" value={assignedUserId} onChange={(e) => setAssignedUserId(e.target.value)}>
+            <option value="">Unassigned</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.name}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="label">Note</label>
