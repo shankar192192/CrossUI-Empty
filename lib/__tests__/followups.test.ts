@@ -3,6 +3,7 @@ import {
   computeScheduledAt,
   computeNextDayFollowUp,
   computeFollowUpForDate,
+  recomputeFollowUpForTimezoneChange,
   isDueToday,
   daysOverdue,
   todayInTimezone,
@@ -150,5 +151,28 @@ describe("formatInIST", () => {
     // 1:00 PM EDT (America/New_York, summer) = 10:30 PM IST the same day.
     const slot = computeScheduledAt("2026-07-01", "13:00", "America/New_York");
     expect(formatInIST(slot)).toBe("10:30 PM IST");
+  });
+});
+
+describe("recomputeFollowUpForTimezoneChange", () => {
+  it("fixes a stale slot when a client's timezone is corrected after creation (regression)", () => {
+    // Client was created as UK (single-tz, auto-detected), giving a slot at
+    // 1PM London time. Their phone is then corrected to an Indian number —
+    // the slot must be recomputed for 1PM Asia/Kolkata on the SAME
+    // intended day, not left pointing at the old London instant (which,
+    // left stale, would display as "6:30 PM IST" instead of "1:00 PM IST").
+    const staleUkSlot = computeScheduledAt("2026-09-29", "13:00", "Europe/London"); // BST, UTC+1
+    expect(formatInIST(staleUkSlot)).toBe("5:30 PM IST");
+
+    const corrected = recomputeFollowUpForTimezoneChange(staleUkSlot, "Asia/Kolkata");
+    expect(formatInIST(corrected)).toBe("1:00 PM IST");
+    // Same calendar day is preserved, only the instant is fixed.
+    expect(todayInTimezone(OPERATOR_TIMEZONE, corrected)).toBe(todayInTimezone(OPERATOR_TIMEZONE, staleUkSlot));
+  });
+
+  it("falls back to IST when the corrected timezone is still unconfirmed", () => {
+    const staleSlot = computeScheduledAt("2026-09-29", "13:00", "Europe/London");
+    const corrected = recomputeFollowUpForTimezoneChange(staleSlot, null);
+    expect(formatInIST(corrected)).toBe("1:00 PM IST");
   });
 });

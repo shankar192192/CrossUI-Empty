@@ -55,6 +55,23 @@ export function computeFollowUpForDate(localDate: string, timezone: string | nul
   return computeScheduledAt(localDate, FOLLOWUP_CALL_TIME, tz);
 }
 
+/**
+ * Recomputes an already-scheduled follow-up slot after a client's timezone
+ * changes (phone corrected, or manual override set/changed).
+ *
+ * The slot is an absolute instant computed FROM a timezone — if that
+ * timezone was wrong (or just confirmed) after the slot was already set,
+ * the old instant is stale relative to the corrected zone even though it
+ * still displays a plausible-looking "1:00 PM" label. This keeps the same
+ * intended calendar day (tracked via the operator's own IST calendar, so
+ * "today" doesn't shift by editing a client's timezone) and just fixes
+ * what UTC instant "1:00 PM" on that day actually corresponds to.
+ */
+export function recomputeFollowUpForTimezoneChange(existingNextFollowUpAt: Date, newTimezone: string | null | undefined): Date {
+  const targetDate = todayInTimezone(OPERATOR_TIMEZONE, existingNextFollowUpAt);
+  return computeFollowUpForDate(targetDate, newTimezone);
+}
+
 /** A client is due in today's follow-up list once their slot has arrived, up through the end of today in IST. */
 export function isDueToday(nextFollowUpAt: Date | null, now: Date = new Date()): boolean {
   if (!nextFollowUpAt) return false;

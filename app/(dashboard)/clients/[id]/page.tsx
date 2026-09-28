@@ -30,7 +30,7 @@ import { SetFollowUpDateModal } from "@/components/SetFollowUpDateModal";
 import { LostReasonModal } from "@/components/LostReasonModal";
 import { ConfirmDeleteModal } from "@/components/ConfirmDeleteModal";
 import { formatCurrency, formatDate, countryFlag } from "@/lib/format";
-import { formatInIST } from "@/lib/followups";
+import { formatInIST, formatLocalTime, OPERATOR_TIMEZONE } from "@/lib/followups";
 import type { Client } from "@/lib/types";
 
 const FOLLOWUP_OUTCOME_LABEL: Record<string, string> = {
@@ -264,7 +264,8 @@ export default function ClientDetailPage() {
                   <div>
                     <p className="text-sm text-slate-800 font-medium">Call at {formatInIST(new Date(client.nextFollowUpAt))}</p>
                     <p className="text-xs text-slate-400 mt-0.5">
-                      {formatDate(client.nextFollowUpAt)} · 1:00 PM {client.timezone ?? "IST (fallback)"}
+                      {formatLocalTime(new Date(client.nextFollowUpAt), client.timezone ?? OPERATOR_TIMEZONE, true)}{" "}
+                      {client.timezone ?? "IST (fallback)"}
                     </p>
                   </div>
                   <div className="flex gap-2">

@@ -6,7 +6,7 @@ import { updateClientSchema } from "@/lib/validation";
 import { resolveClientIdentity } from "@/lib/clientResolution";
 import { logActivity } from "@/lib/activityLog";
 import { serializeClient } from "@/lib/serialize";
-import { computeNextDayFollowUp } from "@/lib/followups";
+import { computeNextDayFollowUp, recomputeFollowUpForTimezoneChange } from "@/lib/followups";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   try {
@@ -84,6 +84,13 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           type: "TIMEZONE_UPDATED",
           message: `Timezone set to ${identity.timezone} (${identity.timezoneSource === "MANUAL" ? "manual override" : "auto-detected"})`,
         });
+
+        if (
+          existing.nextFollowUpAt &&
+          (existing.status === "NEW_LEAD" || existing.status === "FOLLOW_UP")
+        ) {
+          update.nextFollowUpAt = recomputeFollowUpForTimezoneChange(existing.nextFollowUpAt, identity.timezone);
+        }
       }
     }
   }
