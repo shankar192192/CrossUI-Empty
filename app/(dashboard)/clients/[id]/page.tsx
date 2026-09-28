@@ -17,6 +17,7 @@ import {
   Loader2,
   Flame,
   Presentation,
+  Trash2,
 } from "lucide-react";
 import { StatusBadge, PaymentStatusBadge } from "@/components/StatusBadge";
 import { LocalClock } from "@/components/LocalClock";
@@ -27,6 +28,7 @@ import { PaymentModal } from "@/components/PaymentModal";
 import { DemoScheduleModal } from "@/components/DemoScheduleModal";
 import { SetFollowUpDateModal } from "@/components/SetFollowUpDateModal";
 import { LostReasonModal } from "@/components/LostReasonModal";
+import { ConfirmDeleteModal } from "@/components/ConfirmDeleteModal";
 import { formatCurrency, formatDate, countryFlag } from "@/lib/format";
 import { formatInIST } from "@/lib/followups";
 import type { Client } from "@/lib/types";
@@ -49,6 +51,7 @@ export default function ClientDetailPage() {
   const [showDemo, setShowDemo] = useState(false);
   const [showSetDate, setShowSetDate] = useState(false);
   const [showLost, setShowLost] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
   const [completingDemo, setCompletingDemo] = useState(false);
   const [markingTomorrow, setMarkingTomorrow] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -85,6 +88,16 @@ export default function ClientDetailPage() {
     });
     setMarkingTomorrow(false);
     load();
+  }
+
+  async function deleteClient() {
+    if (!client) return;
+    const res = await fetch(`/api/clients/${client.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Failed to delete client");
+    }
+    router.push("/clients");
   }
 
   if (notFound) {
@@ -149,6 +162,9 @@ export default function ClientDetailPage() {
                 <Wallet className="w-4 h-4" /> Record Payment
               </button>
             )}
+            <button onClick={() => setShowDelete(true)} className="btn-ghost text-red-500" title="Permanently delete this client">
+              <Trash2 className="w-4 h-4" /> Delete
+            </button>
           </div>
         </div>
       </div>
@@ -355,6 +371,14 @@ export default function ClientDetailPage() {
             setShowLost(false);
             load();
           }}
+        />
+      )}
+      {showDelete && (
+        <ConfirmDeleteModal
+          title={`Delete ${client.name}?`}
+          message="This permanently removes the client and all of their follow-up history, payments, and activity — this cannot be undone. If you just want to record that this lead didn't work out, use Mark Lost instead."
+          onClose={() => setShowDelete(false)}
+          onConfirm={deleteClient}
         />
       )}
     </div>

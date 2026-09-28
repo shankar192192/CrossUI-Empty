@@ -56,6 +56,17 @@ export async function getSession(): Promise<SessionPayload | null> {
 export async function requireSession(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session) throw new Error("UNAUTHENTICATED");
+
+  // A valid signature doesn't guarantee the user still exists — e.g. after
+  // a database reset, a browser can still hold an old signed cookie
+  // referencing a since-deleted user id. Writes that log activity against
+  // that id would otherwise fail a foreign-key check deep in a
+  // transaction (after other rows already succeeded), surfacing as a
+  // confusing partial-success 500. Catch it here instead as a clean
+  // "please log in again".
+  const user = await prisma.user.findUnique({ where: { id: session.userId }, select: { id: true } });
+  if (!user) throw new Error("UNAUTHENTICATED");
+
   return session;
 }
 

@@ -12,7 +12,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   try {
     session = await requireSession();
   } catch {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return NextResponse.json({ error: "Your session has expired. Please refresh the page and log in again." }, { status: 401 });
   }
 
   const client = await prisma.client.findUnique({ where: { id: params.id } });

@@ -6,7 +6,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   try {
     await requireSession();
   } catch {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return NextResponse.json({ error: "Your session has expired. Please refresh the page and log in again." }, { status: 401 });
   }
 
   // Clients referencing this source keep their lead-source history via

@@ -7,7 +7,7 @@ export async function GET() {
   try {
     await requireSession();
   } catch {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return NextResponse.json({ error: "Your session has expired. Please refresh the page and log in again." }, { status: 401 });
   }
 
   const users = await prisma.user.findMany({
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
   try {
     session = await requireSession();
   } catch {
-    return NextResponse.json({ error: "Unauthenticated" }, { status: 401 });
+    return NextResponse.json({ error: "Your session has expired. Please refresh the page and log in again." }, { status: 401 });
   }
   if (session.role !== "ADMIN") {
     return NextResponse.json({ error: "Only admins can add team members" }, { status: 403 });
