@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Search, Plus, SlidersHorizontal } from "lucide-react";
 import { StatusBadge } from "@/components/StatusBadge";
 import { LocalClock } from "@/components/LocalClock";
@@ -19,17 +20,20 @@ const STATUS_LABEL: Record<string, string> = {
   LOST: "Lost",
 };
 
-export default function ClientsPage() {
+function ClientsPageInner() {
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams.get("status") ?? "";
+
   const [clients, setClients] = useState<Client[]>([]);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState(initialStatus);
   const [leadSourceId, setLeadSourceId] = useState("");
   const [leadSources, setLeadSources] = useState<LeadSource[]>([]);
   const [followUpDue, setFollowUpDue] = useState(false);
   const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [sort, setSort] = useState("newest");
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!initialStatus);
   const [showAddClient, setShowAddClient] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -219,5 +223,13 @@ export default function ClientsPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function ClientsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-slate-400 text-sm">Loading…</div>}>
+      <ClientsPageInner />
+    </Suspense>
   );
 }

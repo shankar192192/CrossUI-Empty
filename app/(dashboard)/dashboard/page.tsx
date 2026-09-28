@@ -84,28 +84,23 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-        <StatCard label="Total Leads" value={metrics.totalLeads} icon={Users} />
-        <StatCard label="New Leads" value={metrics.newLeads} icon={Sparkles} />
-        <StatCard label="Demo Scheduled" value={metrics.demoScheduled} icon={Presentation} />
+        <StatCard label="Total Leads" value={metrics.totalLeads} icon={Users} href="/clients" />
+        <StatCard label="New Leads" value={metrics.newLeads} icon={Sparkles} href="/clients?status=NEW_LEAD" />
+        <StatCard label="Demo Scheduled" value={metrics.demoScheduled} icon={Presentation} href="/clients?status=DEMO_SCHEDULED" />
         <StatCard
           label="Follow-ups Due Today"
           value={metrics.followUpsDueToday}
           icon={CalendarClock}
           tone={metrics.followUpsDueToday > 0 ? "warning" : "default"}
+          href="/followups"
         />
-        <StatCard label="Converted" value={metrics.converted} icon={BadgeCheck} tone="success" />
-        <StatCard label="Lost" value={metrics.lost} icon={XCircle} tone="danger" />
-        <StatCard label="Total Revenue" value={formatCurrency(metrics.totalRevenue)} icon={IndianRupee} />
+        <StatCard label="Converted" value={metrics.converted} icon={BadgeCheck} tone="success" href="/converted" />
+        <StatCard label="Lost" value={metrics.lost} icon={XCircle} tone="danger" href="/clients?status=LOST" />
+        <StatCard label="Total Revenue" value={formatCurrency(metrics.totalRevenue)} icon={IndianRupee} href="/converted" />
       </div>
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <StatCard label="Total Profit" value={formatCurrency(metrics.totalProfit)} icon={TrendingUp} tone="success" />
-        <StatCard label="Pending Payments" value={formatCurrency(metrics.pendingPayments)} icon={Wallet} tone="warning" />
-        <StatCard
-          label="Overdue Payments"
-          value={metrics.overduePayments}
-          icon={XCircle}
-          tone={metrics.overduePayments > 0 ? "danger" : "default"}
-        />
+        <StatCard label="Total Profit" value={formatCurrency(metrics.totalProfit)} icon={TrendingUp} tone="success" href="/converted" />
+        <StatCard label="Pending Payments" value={formatCurrency(metrics.pendingPayments)} icon={Wallet} tone="warning" href="/payments" />
       </div>
 
       <section>
@@ -171,7 +166,7 @@ export default function DashboardPage() {
 
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h2 className="text-base font-semibold text-slate-900">Payments Requiring Attention</h2>
+          <h2 className="text-base font-semibold text-slate-900">Pending Payments</h2>
           <Link href="/payments" className="text-sm text-brand-600 hover:underline">
             View all
           </Link>
