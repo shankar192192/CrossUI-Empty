@@ -84,13 +84,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
           type: "TIMEZONE_UPDATED",
           message: `Timezone set to ${identity.timezone} (${identity.timezoneSource === "MANUAL" ? "manual override" : "auto-detected"})`,
         });
+      }
 
-        if (
-          existing.nextFollowUpAt &&
-          (existing.status === "NEW_LEAD" || existing.status === "FOLLOW_UP")
-        ) {
-          update.nextFollowUpAt = recomputeFollowUpForTimezoneChange(existing.nextFollowUpAt, identity.timezone);
-        }
+      // Recompute on every edit that touches phone/timezone, not just when
+      // the resolved value textually changes — a follow-up slot computed
+      // under a stale/incorrect timezone earlier stays wrong forever
+      // otherwise, even after the timezone is "corrected" to the same
+      // value it already displayed (e.g. re-confirming an already-correct
+      // manual override does nothing to a value that was miscomputed at
+      // creation time, unless we always self-heal here).
+      if (
+        identity.timezone &&
+        existing.nextFollowUpAt &&
+        (existing.status === "NEW_LEAD" || existing.status === "FOLLOW_UP")
+      ) {
+        update.nextFollowUpAt = recomputeFollowUpForTimezoneChange(existing.nextFollowUpAt, identity.timezone);
       }
     }
   }
