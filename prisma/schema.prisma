@@ -1,0 +1,215 @@
+// PrepSeven CRM — Prisma schema
+// Relational design: Clients are the hub; FollowUps, Payments, and Activities
+// each belong to exactly one Client and are queried/indexed independently
+// rather than being folded into a JSON blob on Client.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SALESPERSON
+}
+
+enum ClientStatus {
+  NEW_LEAD
+  DEMO_SCHEDULED
+  FOLLOW_UP
+  CONVERTED
+  LOST
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  INSTAGRAM
+  FACEBOOK
+  GOOGLE_ADS
+  WHATSAPP_INBOUND
+  WALK_IN
+  PARTNER_SCHOOL
+  OTHER
+}
+
+enum FollowUpStatus {
+  PENDING
+  COMPLETED
+  RESCHEDULED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum ActivityType {
+  LEAD_CREATED
+  NOTE
+  REQUIREMENT_UPDATED
+  STATUS_CHANGED
+  DEMO_SCHEDULED
+  FOLLOW_UP_SCHEDULED
+  FOLLOW_UP_COMPLETED
+  FOLLOW_UP_RESCHEDULED
+  TIMEZONE_UPDATED
+  CONVERTED
+  PAYMENT_RECORDED
+  CLIENT_UPDATED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(SALESPERSON)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  assignedClients Client[]      @relation("AssignedSalesperson")
+  followUps       FollowUp[]    @relation("AssignedFollowUp")
+  activities      Activity[]    @relation("ActivityActor")
+
+  @@index([email])
+}
+
+model Client {
+  id String @id @default(cuid())
+
+  // Identity — at least one of phone/email is required (enforced in app layer)
+  name  String
+  phone String? // E.164 formatted, e.g. +14155552671
+  email String?
+
+  // Country/timezone
+  country            String? // ISO 3166-1 alpha-2, e.g. "US"
+  countryName        String?
+  timezone           String? // IANA tz, e.g. "America/New_York"
+  timezoneSource     String  @default("UNDETERMINED") // AUTO_DETECTED | MANUAL | UNDETERMINED
+  timezoneConfident  Boolean @default(false) // false => "Needs confirmation"
+
+  requirement String?
+  notes       String?
+  leadSource  LeadSource @default(OTHER)
+  status      ClientStatus @default(NEW_LEAD)
+
+  dateAdded DateTime @default(now())
+
+  // Sales info
+  demoAt          DateTime? // stored UTC instant
+  assignedUserId  String?
+  assignedUser    User?     @relation("AssignedSalesperson", fields: [assignedUserId], references: [id])
+
+  // Conversion / financial info (only meaningful once status = CONVERTED)
+  convertedAt        DateTime?
+  productService      String?
+  totalRevenue        Decimal?  @db.Decimal(14, 2)
+  totalCost           Decimal?  @db.Decimal(14, 2)
+  amountReceived       Decimal  @default(0) @db.Decimal(14, 2)
+  paymentDueDate      DateTime?
+  conversionNotes     String?
+
+  lostReason String?
+  lostAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  followUps  FollowUp[]
+  payments   Payment[]
+  activities Activity[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([status])
+  @@index([country])
+  @@index([timezone])
+  @@index([leadSource])
+  @@index([dateAdded])
+  @@index([convertedAt])
+  @@index([assignedUserId])
+}
+
+model FollowUp {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // What the user entered, kept for display/edit purposes
+  localDate String // "YYYY-MM-DD" in the client's timezone
+  localTime String // "HH:mm" in the client's timezone
+  timezone  String // IANA tz used to compute scheduledAt
+
+  // The authoritative absolute instant, computed from localDate+localTime+timezone.
+  // All "is this due" logic compares against this field, so DST is handled
+  // correctly because the conversion is recomputed per calendar date.
+  scheduledAt DateTime
+
+  note   String?
+  status FollowUpStatus @default(PENDING)
+
+  assignedUserId String?
+  assignedUser   User?   @relation("AssignedFollowUp", fields: [assignedUserId], references: [id])
+
+  completedAt    DateTime?
+  rescheduledFromId String?  // self-reference to the follow-up this replaced
+
+  isDefaultNoon Boolean @default(false) // true if auto-created 12:00 local default
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([scheduledAt])
+  @@index([status])
+  @@index([assignedUserId])
+}
+
+model Payment {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  amount    Decimal  @db.Decimal(14, 2)
+  paidAt    DateTime @default(now())
+  method    String?
+  reference String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([paidAt])
+}
+
+model Activity {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  type    ActivityType
+  message String
+
+  actorId String?
+  actor   User?   @relation("ActivityActor", fields: [actorId], references: [id])
+
+  metadata Json?
+
+  occurredAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([occurredAt])
+  @@index([type])
+}
