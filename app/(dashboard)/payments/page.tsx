@@ -71,32 +71,32 @@ export default function PaymentsPage() {
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Revenue</p>
-          <p className="text-xl font-semibold text-slate-900 mt-1">{formatCurrency(totals.revenue)}</p>
+          <p className="text-xl font-semibold break-words text-slate-900 mt-1">{formatCurrency(totals.revenue)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Received</p>
-          <p className="text-xl font-semibold text-emerald-600 mt-1">{formatCurrency(totals.received)}</p>
+          <p className="text-xl font-semibold break-words text-emerald-600 mt-1">{formatCurrency(totals.received)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Pending</p>
-          <p className="text-xl font-semibold text-amber-600 mt-1">{formatCurrency(totals.pending)}</p>
+          <p className="text-xl font-semibold break-words text-amber-600 mt-1">{formatCurrency(totals.pending)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Overdue</p>
-          <p className="text-xl font-semibold text-red-600 mt-1">{totals.overdue}</p>
+          <p className="text-xl font-semibold break-words text-red-600 mt-1">{totals.overdue}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Due Within 7 Days</p>
-          <p className="text-xl font-semibold text-slate-900 mt-1">{dueSoon}</p>
+          <p className="text-xl font-semibold break-words text-slate-900 mt-1">{dueSoon}</p>
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
+      <div className="flex gap-1 border-b border-slate-200 overflow-x-auto min-w-0">
         {STATUS_FILTERS.map((f) => (
           <button
             key={f.key}
             onClick={() => setStatusFilter(f.key)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
               statusFilter === f.key ? "border-brand-600 text-brand-600" : "border-transparent text-slate-500 hover:text-slate-800"
             }`}
           >

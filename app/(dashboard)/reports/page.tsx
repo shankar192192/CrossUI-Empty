@@ -135,7 +135,7 @@ function SummaryCard({ label, value, tone }: { label: string; value: string | nu
   return (
     <div className="card p-4">
       <p className="text-xs text-slate-500">{label}</p>
-      <p className={`text-xl font-semibold mt-1 ${color}`}>{value}</p>
+      <p className={`text-xl font-semibold break-words mt-1 ${color}`}>{value}</p>
     </div>
   );
 }

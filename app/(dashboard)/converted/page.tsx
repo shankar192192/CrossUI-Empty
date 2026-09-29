@@ -55,19 +55,19 @@ export default function ConvertedPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Revenue</p>
-          <p className="text-xl font-semibold text-slate-900 mt-1">{formatCurrency(totals.revenue)}</p>
+          <p className="text-xl font-semibold break-words text-slate-900 mt-1">{formatCurrency(totals.revenue)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Profit</p>
-          <p className="text-xl font-semibold text-emerald-600 mt-1">{formatCurrency(totals.profit)}</p>
+          <p className="text-xl font-semibold break-words text-emerald-600 mt-1">{formatCurrency(totals.profit)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Received</p>
-          <p className="text-xl font-semibold text-slate-900 mt-1">{formatCurrency(totals.received)}</p>
+          <p className="text-xl font-semibold break-words text-slate-900 mt-1">{formatCurrency(totals.received)}</p>
         </div>
         <div className="card p-4">
           <p className="text-xs text-slate-500">Total Pending</p>
-          <p className="text-xl font-semibold text-amber-600 mt-1">{formatCurrency(totals.pending)}</p>
+          <p className="text-xl font-semibold break-words text-amber-600 mt-1">{formatCurrency(totals.pending)}</p>
         </div>
       </div>
 

@@ -52,8 +52,8 @@ export function Sidebar({
       )}
 
       <aside
-        className={`w-60 shrink-0 h-screen sticky top-0 flex flex-col bg-slate-900 text-slate-300 z-50
-          fixed md:sticky inset-y-0 left-0 transition-transform duration-200 ease-out
+        className={`w-60 shrink-0 h-screen flex flex-col bg-slate-900 text-slate-300 z-50
+          fixed md:sticky top-0 inset-y-0 left-0 transition-transform duration-200 ease-out
           ${mobileOpen ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}
       >
         <div className="flex items-center gap-2 px-5 h-16 border-b border-slate-800 shrink-0">

@@ -87,9 +87,9 @@ function ClientsPageInner() {
           <h1 className="text-2xl font-semibold text-slate-900">All Clients</h1>
           <p className="text-sm text-slate-500 mt-1">{total} total</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
           <DateRangeFilter value={dateRange} onChange={setDateRange} />
-          <button onClick={() => setShowAddClient(true)} className="btn-primary">
+          <button onClick={() => setShowAddClient(true)} className="btn-primary shrink-0">
             <Plus className="w-4 h-4" /> Add Client
           </button>
         </div>
@@ -97,7 +97,7 @@ function ClientsPageInner() {
 
       <div className="card p-4 space-y-3">
         <div className="flex flex-wrap gap-3">
-          <div className="relative flex-1 min-w-[240px]">
+          <div className="relative flex-1 min-w-0 basis-full sm:basis-[240px]">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               className="input pl-9"

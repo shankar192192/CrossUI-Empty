@@ -75,15 +75,15 @@ export default function DashboardPage() {
           <h1 className="text-2xl font-semibold text-slate-900">{greeting()}</h1>
           <p className="text-sm text-slate-500 mt-1">Here&apos;s what&apos;s happening across your pipeline.</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 min-w-0">
           <DateRangeFilter value={dateRange} onChange={setDateRange} />
-          <button onClick={() => setShowAddClient(true)} className="btn-primary">
+          <button onClick={() => setShowAddClient(true)} className="btn-primary shrink-0">
             <Plus className="w-4 h-4" /> Add Client
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 2xl:grid-cols-7 gap-3">
         <StatCard label="Total Leads" value={metrics.totalLeads} icon={Users} href="/clients" />
         <StatCard label="New Leads" value={metrics.newLeads} icon={Sparkles} href="/clients?status=NEW_LEAD" />
         <StatCard label="Demo Scheduled" value={metrics.demoScheduled} icon={Presentation} href="/clients?status=DEMO_SCHEDULED" />

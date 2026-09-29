@@ -24,13 +24,13 @@ export function StatCard({
   }[tone];
 
   const content = (
-    <div className={`card p-4 flex items-start justify-between ${href ? "transition-shadow hover:shadow-md hover:border-slate-300" : ""}`}>
-      <div>
+    <div className={`card p-4 flex items-start justify-between gap-2 ${href ? "transition-shadow hover:shadow-md hover:border-slate-300" : ""}`}>
+      <div className="min-w-0">
         <p className="text-xs font-medium text-slate-500">{label}</p>
-        <p className="text-2xl font-semibold text-slate-900 mt-1">{value}</p>
+        <p className="text-lg sm:text-2xl font-semibold text-slate-900 mt-1 break-words">{value}</p>
         {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
       </div>
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${toneClass}`}>
+      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${toneClass}`}>
         <Icon className="w-[18px] h-[18px]" />
       </div>
     </div>

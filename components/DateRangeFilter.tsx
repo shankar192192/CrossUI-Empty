@@ -68,15 +68,15 @@ export function DateRangeFilter({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <Calendar className="w-4 h-4 text-slate-400" />
-      <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+    <div className="flex flex-wrap items-center gap-2 min-w-0 max-w-full">
+      <Calendar className="w-4 h-4 text-slate-400 shrink-0" />
+      <div className="flex overflow-x-auto rounded-lg border border-slate-200 min-w-0 max-w-full">
         {PRESETS.map((p) => (
           <button
             key={p.key}
             type="button"
             onClick={() => applyPreset(p.key)}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`shrink-0 whitespace-nowrap px-3 py-1.5 text-xs font-medium transition-colors ${
               preset === p.key ? "bg-brand-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
             }`}
           >

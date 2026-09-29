@@ -35,8 +35,8 @@ export function FollowUpCard({ client, onChanged }: { client: Client; onChanged:
 
   return (
     <div className="card p-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-lg leading-none">{countryFlag(client.country)}</span>
             <Link href={`/clients/${client.id}`} className="font-semibold text-slate-900 hover:text-brand-600 truncate">
@@ -58,19 +58,19 @@ export function FollowUpCard({ client, onChanged }: { client: Client; onChanged:
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-slate-500">
             {client.phone && (
-              <span className="flex items-center gap-1">
-                <MessageCircle className="w-3.5 h-3.5" /> {client.phone}
+              <span className="flex items-center gap-1 min-w-0 break-all">
+                <MessageCircle className="w-3.5 h-3.5 shrink-0" /> {client.phone}
               </span>
             )}
             {client.email && (
-              <span className="flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5" /> {client.email}
+              <span className="flex items-center gap-1 min-w-0 break-all">
+                <Mail className="w-3.5 h-3.5 shrink-0" /> {client.email}
               </span>
             )}
           </div>
         </div>
 
-        <div className="text-right shrink-0">
+        <div className="text-right shrink-0 ml-auto">
           <p className="text-xs text-slate-400">{client.timezone ?? "Timezone unknown"}</p>
           <p className="text-lg font-semibold text-slate-900">
             <LocalClock timezone={client.timezone} />
