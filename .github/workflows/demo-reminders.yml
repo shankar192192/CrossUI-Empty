@@ -17,6 +17,14 @@ jobs:
     steps:
       - name: Call demo-reminders endpoint
         run: |
-          curl -sS -X POST "${{ vars.APP_URL }}/api/cron/demo-reminders" \
+          # Strip any trailing slash from APP_URL so this works whether or
+          # not it was entered with one — a stray "//" in the path makes
+          # Vercel issue a redirect, and since curl here isn't told to
+          # follow redirects (-L), a redirect would otherwise print its
+          # stub body and exit 0, masquerading as a successful call that
+          # never actually reached the route.
+          APP_URL="${{ vars.APP_URL }}"
+          APP_URL="${APP_URL%/}"
+          curl -sS -L -X POST "$APP_URL/api/cron/demo-reminders" \
             -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
             --fail-with-body
