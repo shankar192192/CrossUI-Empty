@@ -21,6 +21,16 @@ export function PushNotificationSettings() {
     checkStatus();
   }, []);
 
+  async function saveSubscription(sub: PushSubscription) {
+    const json = sub.toJSON();
+    const res = await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
+    });
+    if (!res.ok) throw new Error((await res.json()).error ?? "Failed to save subscription");
+  }
+
   async function checkStatus() {
     if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       setStatus("unsupported");
@@ -33,7 +43,27 @@ export function PushNotificationSettings() {
     try {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
-      setStatus(sub ? "subscribed" : "not-subscribed");
+      if (!sub) {
+        setStatus("not-subscribed");
+        return;
+      }
+      // The browser already has a subscription, but that's local state —
+      // it says nothing about whether the server still has a matching
+      // record (e.g. a prior save could have failed silently, or the
+      // database could have been reset). Re-save it every time this page
+      // loads so the two can never silently drift apart; this is just an
+      // upsert, harmless to repeat.
+      try {
+        await saveSubscription(sub);
+        setStatus("subscribed");
+      } catch (e) {
+        setStatus("subscribed");
+        setError(
+          `This device is subscribed locally, but re-saving it to the server just failed (${
+            e instanceof Error ? e.message : "unknown error"
+          }). Reminders won't reach this device until that succeeds — try "Turn off" then "Enable" again.`
+        );
+      }
     } catch {
       setStatus("not-subscribed");
     }
@@ -59,14 +89,7 @@ export function PushNotificationSettings() {
         applicationServerKey: urlBase64ToUint8Array(publicKeyRes.publicKey),
       });
 
-      const json = sub.toJSON();
-      const res = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Failed to save subscription");
-
+      await saveSubscription(sub);
       setStatus("subscribed");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong");
