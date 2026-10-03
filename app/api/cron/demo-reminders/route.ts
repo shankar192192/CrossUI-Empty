@@ -3,16 +3,18 @@ import { prisma } from "@/lib/prisma";
 import { sendPushToAll } from "@/lib/push";
 import { formatInIST } from "@/lib/followups";
 
-// Called every few minutes by an external scheduler (GitHub Actions — see
-// .github/workflows/demo-reminders.yml) rather than Vercel's own cron,
-// since Vercel's free tier only runs cron jobs once a day, which isn't
-// frequent enough for a "30 minutes before" reminder.
+// Called every 5 minutes by an external scheduler (cron-job.org) rather
+// than Vercel's own cron, since Vercel's free tier only runs cron jobs
+// once a day — nowhere near frequent enough for a "30 minutes before"
+// reminder. GitHub Actions' own `schedule` trigger was tried first but
+// proved unreliable (never fired on its own even once in over an hour of
+// waiting — see .github/workflows/demo-reminders.yml, kept around now
+// only as a manual-trigger debugging tool).
 //
 // Window is wider than exactly 30 minutes (25–40) so a scheduler run that
-// lands a few minutes late — GitHub Actions cron isn't second-precise —
-// still catches every demo before its reminder window closes.
-// demoReminderSentAt dedupes so a demo already caught by an earlier run
-// never gets a second push.
+// lands a few minutes late still catches every demo before its reminder
+// window closes. demoReminderSentAt dedupes so a demo already caught by
+// an earlier run never gets a second push.
 const WINDOW_START_MINUTES = 25;
 const WINDOW_END_MINUTES = 40;
 
