@@ -91,3 +91,15 @@ export const paymentSchema = z.object({
 export const leadSourceSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(100),
 });
+
+export const pushSubscribeSchema = z.object({
+  endpoint: z.string().url(),
+  keys: z.object({
+    p256dh: z.string().min(1),
+    auth: z.string().min(1),
+  }),
+});
+
+export const pushUnsubscribeSchema = z.object({
+  endpoint: z.string().url(),
+});

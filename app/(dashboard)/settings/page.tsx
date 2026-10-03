@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { UserPlus, Loader2, Plus, X } from "lucide-react";
 import type { LeadSource } from "@/lib/types";
+import { PushNotificationSettings } from "@/components/PushNotificationSettings";
 
 interface UserRow {
   id: string;
@@ -94,6 +95,8 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-semibold text-slate-900">Settings</h1>
         <p className="text-sm text-slate-500 mt-1">Manage your team</p>
       </div>
+
+      <PushNotificationSettings />
 
       <div className="card p-5">
         <h2 className="text-sm font-semibold text-slate-900 mb-3">Lead sources</h2>

@@ -67,9 +67,24 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  activities Activity[] @relation("ActivityActor")
+  activities        Activity[]         @relation("ActivityActor")
+  pushSubscriptions PushSubscription[]
 
   @@index([email])
+}
+
+// One row per device/browser that has enabled demo-reminder push
+// notifications. A single operator can have several (phone + laptop).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // Manageable, non-enum lead source list — admins can add/delete sources
@@ -116,6 +131,11 @@ model Client {
   // instant so "is this due today" is a simple, DST-safe comparison.
   nextFollowUpAt   DateTime?
   followUpPriority Boolean   @default(false) // true right after a demo completes
+
+  // Set once the 30-minutes-before push reminder has gone out for the
+  // current demoAt, so the cron job never double-sends. Cleared whenever
+  // demoAt changes (rescheduled demo = a new reminder is owed).
+  demoReminderSentAt DateTime?
 
   // Conversion / financial info (only meaningful once status = CONVERTED)
   convertedAt     DateTime?

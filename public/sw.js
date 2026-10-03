@@ -62,3 +62,42 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+// Demo reminder push notifications — sent by the server (see
+// app/api/cron/demo-reminders) roughly 30 minutes before a scheduled demo.
+self.addEventListener("push", (event) => {
+  let data = { title: "PrepSeven CRM", body: "You have a notification.", url: "/dashboard" };
+  try {
+    if (event.data) data = { ...data, ...event.data.json() };
+  } catch {
+    // ignore malformed payloads
+  }
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/dashboard";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(url) && "focus" in client) return client.focus();
+      }
+      for (const client of clientList) {
+        if ("navigate" in client && "focus" in client) {
+          return client.navigate(url).then(() => client.focus());
+        }
+      }
+      return self.clients.openWindow(url);
+    })
+  );
+});

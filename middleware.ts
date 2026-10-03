@@ -3,7 +3,11 @@ import { jwtVerify } from "jose";
 
 const SESSION_COOKIE = "prepseven_session";
 
-const PUBLIC_PATHS = ["/login", "/api/auth/login"];
+// Not actually open to the world — each one enforces its own auth inside
+// the route handler instead of the session cookie this middleware checks.
+// /api/cron/demo-reminders is called by GitHub Actions (no browser
+// session), and checks a bearer-token CRON_SECRET itself.
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/cron/demo-reminders"];
 
 // PWA assets the browser fetches on its own (registering the service
 // worker, reading the manifest, showing the offline fallback) — these must

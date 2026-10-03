@@ -31,7 +31,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const updated = await prisma.$transaction(async (tx) => {
     const c = await tx.client.update({
       where: { id: client.id },
-      data: { status: "DEMO_SCHEDULED", demoAt },
+      data: { status: "DEMO_SCHEDULED", demoAt, demoReminderSentAt: null },
     });
 
     await logActivity(tx, {
