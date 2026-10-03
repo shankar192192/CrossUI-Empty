@@ -1,14 +1,15 @@
 name: Demo reminders
 
-# Vercel's free Hobby plan only runs cron jobs once a day, which is useless
-# for a "30 minutes before" reminder — so this repo's own GitHub Actions
-# schedule fills in instead, calling the app's /api/cron/demo-reminders
-# endpoint every 5 minutes. GitHub's own scheduler isn't second-precise and
-# can run a few minutes late, which is why that endpoint checks a window
-# (25–40 minutes out) rather than an exact instant.
+# The actual 5-minute schedule lives on cron-job.org (a free external
+# scheduler), not here — GitHub Actions' own `schedule` trigger was tried
+# first but proved unreliable in practice (it never fired on its own even
+# once in over an hour of waiting, a known quirk with GitHub deprioritizing
+# cron runs, especially for newly-added schedules on free/public repos).
+#
+# This workflow is kept around purely as a manual trigger
+# (workflow_dispatch) for debugging — e.g. to force an immediate check
+# without waiting for the external scheduler's next tick.
 on:
-  schedule:
-    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 jobs:
