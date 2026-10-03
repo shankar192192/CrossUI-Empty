@@ -1,0 +1,226 @@
+// PrepSeven CRM — Prisma schema
+// Relational design: Clients are the hub; LeadSources, Payments, Activities,
+// and FollowUpLogs each belong to exactly one Client (or are shared, for
+// LeadSource) and are queried/indexed independently rather than being
+// folded into a JSON blob on Client.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  SALESPERSON
+}
+
+enum ClientStatus {
+  NEW_LEAD
+  DEMO_SCHEDULED
+  FOLLOW_UP
+  CONVERTED
+  LOST
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+}
+
+enum ActivityType {
+  LEAD_CREATED
+  NOTE
+  REQUIREMENT_UPDATED
+  STATUS_CHANGED
+  DEMO_SCHEDULED
+  DEMO_COMPLETED
+  FOLLOW_UP_SCHEDULED
+  FOLLOW_UP_LOGGED
+  TIMEZONE_UPDATED
+  CONVERTED
+  PAYMENT_RECORDED
+  CLIENT_UPDATED
+}
+
+// The outcome recorded each time the daily follow-up list is worked through
+// for a given client.
+enum FollowUpOutcome {
+  FOLLOWED_UP_NEXT_DAY
+  FOLLOWED_UP_SPECIFIC_DATE
+  DEMO_COMPLETED
+  CONVERTED
+  LOST
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(SALESPERSON)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  activities        Activity[]         @relation("ActivityActor")
+  pushSubscriptions PushSubscription[]
+
+  @@index([email])
+}
+
+// One row per device/browser that has enabled demo-reminder push
+// notifications. A single operator can have several (phone + laptop).
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Manageable, non-enum lead source list — admins can add/delete sources
+// from Settings without a schema migration.
+model LeadSource {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  clients Client[]
+}
+
+model Client {
+  id String @id @default(cuid())
+
+  // Identity — at least one of phone/email is required (enforced in app layer)
+  name  String
+  phone String? // E.164 formatted, e.g. +14155552671
+  email String?
+
+  // Country/timezone
+  country           String? // ISO 3166-1 alpha-2, e.g. "US"
+  countryName       String?
+  timezone          String? // IANA tz, e.g. "America/New_York"
+  timezoneSource    String  @default("UNDETERMINED") // AUTO_DETECTED | MANUAL | UNDETERMINED
+  timezoneConfident Boolean @default(false) // false => "Needs confirmation"
+
+  requirement  String?
+  notes        String?
+  leadSourceId String?
+  leadSource   LeadSource?  @relation(fields: [leadSourceId], references: [id], onDelete: SetNull)
+  status       ClientStatus @default(NEW_LEAD)
+
+  dateAdded DateTime @default(now())
+
+  // Demo — always scheduled by the operator in their own timezone (IST),
+  // stored as the absolute UTC instant.
+  demoAt DateTime?
+
+  // Follow-up scheduling: a single "next follow-up" slot per client rather
+  // than a queue of records. Always the operator's fixed call slot (1:00 PM)
+  // resolved in the CLIENT's own local timezone (falling back to IST if the
+  // client's timezone is not yet confirmed), stored as the absolute UTC
+  // instant so "is this due today" is a simple, DST-safe comparison.
+  nextFollowUpAt   DateTime?
+  followUpPriority Boolean   @default(false) // true right after a demo completes
+
+  // Set once the 30-minutes-before push reminder has gone out for the
+  // current demoAt, so the cron job never double-sends. Cleared whenever
+  // demoAt changes (rescheduled demo = a new reminder is owed).
+  demoReminderSentAt DateTime?
+
+  // Conversion / financial info (only meaningful once status = CONVERTED)
+  convertedAt     DateTime?
+  productService  String?
+  totalRevenue    Decimal?  @db.Decimal(14, 2)
+  totalCost       Decimal?  @db.Decimal(14, 2)
+  amountReceived  Decimal   @default(0) @db.Decimal(14, 2)
+  paymentDueDate  DateTime?
+  conversionNotes String?
+
+  lostReason String?
+  lostAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payments     Payment[]
+  activities   Activity[]
+  followUpLogs FollowUpLog[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([status])
+  @@index([country])
+  @@index([timezone])
+  @@index([leadSourceId])
+  @@index([dateAdded])
+  @@index([convertedAt])
+  @@index([nextFollowUpAt])
+}
+
+// Append-only history of what happened each time a client was worked in the
+// daily follow-up list — this is what keeps follow-up history permanently
+// attached to the client even though only one "next follow-up" is active.
+model FollowUpLog {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  outcome        FollowUpOutcome
+  note           String?
+  nextFollowUpAt DateTime? // what was set as a result of this action, if any
+
+  occurredAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([occurredAt])
+}
+
+model Payment {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  amount    Decimal  @db.Decimal(14, 2)
+  paidAt    DateTime @default(now())
+  method    String?
+  reference String?
+  notes     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([paidAt])
+}
+
+model Activity {
+  id String @id @default(cuid())
+
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  type    ActivityType
+  message String
+
+  actorId String?
+  actor   User?   @relation("ActivityActor", fields: [actorId], references: [id])
+
+  metadata Json?
+
+  occurredAt DateTime @default(now())
+
+  @@index([clientId])
+  @@index([occurredAt])
+  @@index([type])
+}

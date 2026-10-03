@@ -1,0 +1,22 @@
+name: Demo reminders
+
+# Vercel's free Hobby plan only runs cron jobs once a day, which is useless
+# for a "30 minutes before" reminder — so this repo's own GitHub Actions
+# schedule fills in instead, calling the app's /api/cron/demo-reminders
+# endpoint every 5 minutes. GitHub's own scheduler isn't second-precise and
+# can run a few minutes late, which is why that endpoint checks a window
+# (25–40 minutes out) rather than an exact instant.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call demo-reminders endpoint
+        run: |
+          curl -sS -X POST "${{ vars.APP_URL }}/api/cron/demo-reminders" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            --fail-with-body
