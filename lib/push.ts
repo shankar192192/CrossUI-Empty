@@ -43,10 +43,12 @@ export async function sendPushToAll(payload: PushPayload) {
   );
 
   const deadEndpoints: string[] = [];
+  const errors: { statusCode?: number; message: string }[] = [];
   results.forEach((result, i) => {
     if (result.status === "rejected") {
-      const statusCode = (result.reason as { statusCode?: number })?.statusCode;
-      if (statusCode === 404 || statusCode === 410) {
+      const reason = result.reason as { statusCode?: number; message?: string; body?: string };
+      errors.push({ statusCode: reason?.statusCode, message: reason?.message ?? reason?.body ?? String(result.reason) });
+      if (reason?.statusCode === 404 || reason?.statusCode === 410) {
         deadEndpoints.push(subscriptions[i].endpoint);
       }
     }
@@ -57,8 +59,10 @@ export async function sendPushToAll(payload: PushPayload) {
   }
 
   return {
+    subscriptionCount: subscriptions.length,
     sent: results.filter((r) => r.status === "fulfilled").length,
     failed: results.filter((r) => r.status === "rejected").length - deadEndpoints.length,
     removed: deadEndpoints.length,
+    errors,
   };
 }

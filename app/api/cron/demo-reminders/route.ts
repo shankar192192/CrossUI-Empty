@@ -40,16 +40,20 @@ export async function POST(req: NextRequest) {
   });
 
   let notified = 0;
+  const pushResults = [];
   for (const client of dueClients) {
     if (!client.demoAt) continue;
-    await sendPushToAll({
+    const result = await sendPushToAll({
       title: "Demo in 30 minutes",
       body: `${client.name} — call at ${formatInIST(client.demoAt)} IST`,
       url: `/clients/${client.id}`,
     });
+    pushResults.push({ clientId: client.id, clientName: client.name, ...result });
     await prisma.client.update({ where: { id: client.id }, data: { demoReminderSentAt: now } });
     notified++;
   }
 
-  return NextResponse.json({ checked: dueClients.length, notified });
+  const subscriptionCount = await prisma.pushSubscription.count();
+
+  return NextResponse.json({ checked: dueClients.length, notified, subscriptionCount, pushResults });
 }
